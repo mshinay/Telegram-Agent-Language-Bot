@@ -1,0 +1,15 @@
+{
+  "telegram": {
+    "botToken": "",
+    "allowedChatId": 123456789,
+    "pollIntervalSec": 1,
+    "replyCharLimit": 3500,
+    "unauthorizedMessage": "unauthorized"
+  },
+  "session": {
+    "path": "data/session.json"
+  },
+  "logging": {
+    "level": "info"
+  }
+}

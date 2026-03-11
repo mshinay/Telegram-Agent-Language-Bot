@@ -1,0 +1,22 @@
+{
+  "bot_token": "YOUR_TELEGRAM_BOT_TOKEN",
+  "allowed_chat_id": 123456789,
+  "projects": {
+    "hm-dianping": "D:/work/project/hm-dianping",
+    "notes": "C:/Users/shinay/Documents/Obsidian Vault"
+  },
+  "agent": {
+    "type": "builtin_dir_summary",
+    "command": [
+      "codex",
+      "exec"
+    ],
+    "timeout_sec": 120
+  },
+  "telegram": {
+    "poll_interval_sec": 1,
+    "long_poll_timeout_sec": 20,
+    "reply_char_limit": 3000
+  },
+  "log_path": "bot.log"
+}
