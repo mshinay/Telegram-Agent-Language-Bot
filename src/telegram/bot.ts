@@ -5,13 +5,15 @@ import type { AppConfig } from '../types/common.js';
 import type { Logger } from '../logger.js';
 import type { SessionStore } from '../types/session.js';
 import { CommandRouter } from '../router/command-router.js';
-import { formatRouteReply } from './message.js';
+import { sendWorkflowReply } from './message.js';
+import type { LessonWorkflow } from '../workflow/lesson-workflow.js';
 
 export interface BotDeps {
   config: AppConfig;
   logger: Logger;
   sessionStore: SessionStore;
   router: CommandRouter;
+  workflow: LessonWorkflow;
 }
 
 interface AbortSignalLike {
@@ -90,7 +92,8 @@ export function createBot(deps: BotDeps): Bot {
       'Resolved incoming text message'
     );
 
-    await ctx.reply(formatRouteReply(action, session));
+    const reply = deps.workflow.handle(action, session);
+    await sendWorkflowReply(ctx, reply, deps.config.telegram.replyCharLimit);
   });
 
   bot.catch((error) => {

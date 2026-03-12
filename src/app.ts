@@ -5,6 +5,7 @@ import { createLogger } from './logger.js';
 import { CommandRouter } from './router/command-router.js';
 import { FileSessionStore } from './session/file-session-store.js';
 import { createBot } from './telegram/bot.js';
+import { LessonWorkflow } from './workflow/lesson-workflow.js';
 
 export interface App {
   bot: Bot;
@@ -17,11 +18,13 @@ export async function createApp(): Promise<App> {
   const logger = createLogger(config.logging.level);
   const sessionStore = new FileSessionStore(config.session.path, logger);
   const router = new CommandRouter();
+  const workflow = new LessonWorkflow();
   const bot = createBot({
     config,
     logger,
     sessionStore,
-    router
+    router,
+    workflow
   });
 
   return {
