@@ -16,6 +16,25 @@ export interface BotDeps {
   workflow: LessonWorkflow;
 }
 
+class ChatTaskQueue {
+  private readonly pending = new Map<number, Promise<void>>();
+
+  public async run(chatId: number, task: () => Promise<void>): Promise<void> {
+    const previous = this.pending.get(chatId) ?? Promise.resolve();
+    const current = previous
+      .catch(() => undefined)
+      .then(task)
+      .finally(() => {
+        if (this.pending.get(chatId) === current) {
+          this.pending.delete(chatId);
+        }
+      });
+
+    this.pending.set(chatId, current);
+    await current;
+  }
+}
+
 interface AbortSignalLike {
   aborted: boolean;
   addEventListener(type: 'abort', listener: () => void, options?: { once?: boolean }): void;
@@ -68,6 +87,7 @@ export function createBot(deps: BotDeps): Bot {
       fetch: createTelegramFetch()
     }
   });
+  const chatTaskQueue = new ChatTaskQueue();
 
   bot.on('message:text', async (ctx) => {
     const chatId = ctx.chat.id;
@@ -79,21 +99,36 @@ export function createBot(deps: BotDeps): Bot {
       return;
     }
 
-    const session = await deps.sessionStore.load();
-    const action = deps.router.route(text, session);
+    await chatTaskQueue.run(chatId, async () => {
+      const session = await deps.sessionStore.load();
+      const action = deps.router.route(text, session);
 
-    deps.logger.info(
-      {
-        event: 'route_resolved',
-        chatId,
-        status: session.status,
-        action: action.type
-      },
-      'Resolved incoming text message'
-    );
+      deps.logger.info(
+        {
+          event: 'route_resolved',
+          chatId,
+          status: session.status,
+          action: action.type
+        },
+        'Resolved incoming text message'
+      );
 
-    const reply = deps.workflow.handle(action, session);
-    await sendWorkflowReply(ctx, reply, deps.config.telegram.replyCharLimit);
+      try {
+        const result = await deps.workflow.handle(action, session);
+        await sendWorkflowReply(ctx, result.reply, deps.config.telegram.replyCharLimit);
+      } catch (error) {
+        deps.logger.error(
+          {
+            event: 'workflow_handle_failed',
+            chatId,
+            action: action.type,
+            error
+          },
+          'Failed to handle lesson workflow action'
+        );
+        await ctx.reply('当前训练流程执行失败，请稍后重试。');
+      }
+    });
   });
 
   bot.catch((error) => {
