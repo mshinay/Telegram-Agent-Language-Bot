@@ -13,7 +13,12 @@ interface RawConfig {
 }
 
 function getDefaultAgentCommand(): string[] {
-  return process.platform === 'win32' ? ['codex.cmd', 'exec'] : ['codex', 'exec'];
+  if (process.platform === 'win32') {
+    const windowsShell = process.env.ComSpec ?? 'cmd.exe';
+    return [windowsShell, '/d', '/s', '/c', 'codex.cmd', 'exec'];
+  }
+
+  return ['codex', 'exec'];
 }
 
 export async function loadConfig(): Promise<AppConfig> {
