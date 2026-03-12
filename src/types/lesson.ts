@@ -2,6 +2,9 @@ export type LanguageMode = 'ja' | 'en';
 
 export type QuestionType = 'translate' | 'retell';
 
+export const LESSON_MATERIAL_COUNT = 1;
+export const LESSON_QUESTION_COUNT = 3;
+
 export interface Question {
   id: number;
   type: QuestionType;

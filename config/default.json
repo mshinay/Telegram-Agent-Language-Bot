@@ -2,7 +2,6 @@
   "telegram": {
     "botToken": "",
     "allowedChatId": 123456789,
-    "pollIntervalSec": 1,
     "longPollTimeoutSec": 20,
     "replyCharLimit": 3500,
     "unauthorizedMessage": "unauthorized"

@@ -32,7 +32,6 @@ export async function createApp(): Promise<App> {
           event: 'app_starting',
           allowedChatId: config.telegram.allowedChatId,
           sessionPath: config.session.path,
-          pollIntervalSec: config.telegram.pollIntervalSec,
           longPollTimeoutSec: config.telegram.longPollTimeoutSec
         },
         'Starting Telegram bot'
