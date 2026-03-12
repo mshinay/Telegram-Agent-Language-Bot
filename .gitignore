@@ -4,3 +4,9 @@ dist/
 data/
 *.log
 pymvc/
+小圆到大圆演进路线图.md
+ARCHITECTURE.md
+MVP_SPEC.md
+MVP_TELEGRAM_AGENT_PLAN.md
+TASKS.md
+TELEGRAM_PROXY_DEBUG.md
