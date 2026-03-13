@@ -24,6 +24,12 @@ export interface AnswerFeedback {
   alternatives: string[];
 }
 
+export interface LessonQuestionReview {
+  question: Question;
+  answer: string;
+  feedback: AnswerFeedback;
+}
+
 export interface LessonSummary {
   topic: string;
   strengths: string[];

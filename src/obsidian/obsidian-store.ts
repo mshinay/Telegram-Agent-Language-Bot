@@ -10,7 +10,11 @@ import {
   type ObsidianWriteRequest,
   type ObsidianWriteResult
 } from '../types/obsidian.js';
-import { normalizeMarkdownContent, prepareMarkdownForWrite } from '../utils/markdown.js';
+import {
+  normalizeMarkdownContent,
+  prepareMarkdownAppendBlock,
+  prepareMarkdownForWrite
+} from '../utils/markdown.js';
 
 export interface FileObsidianStoreOptions {
   vaultPath: string;
@@ -141,12 +145,12 @@ export class FileObsidianStore implements ObsidianStore {
 
         if (exists) {
           const currentContent = await fs.readFile(absolutePath, 'utf8');
-          if (currentContent.length > 0 && !normalizeMarkdownContent(currentContent).endsWith('\n')) {
-            content = `\n${content}`;
-          }
+          content = prepareMarkdownAppendBlock(currentContent, content);
         }
 
-        await fs.appendFile(absolutePath, content, 'utf8');
+        if (content) {
+          await fs.appendFile(absolutePath, content, 'utf8');
+        }
       } else {
         const content = prepareMarkdownForWrite(request.content, request.mode);
         await fs.writeFile(absolutePath, content, 'utf8');

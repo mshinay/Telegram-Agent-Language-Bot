@@ -1,3 +1,6 @@
+import type { ISODateString } from './common.js';
+import type { CompletedLessonSnapshot } from './session.js';
+
 export type ObsidianWriteMode = 'append' | 'overwrite';
 
 export interface ObsidianReadRequest {
@@ -20,6 +23,21 @@ export interface ObsidianWriteRequest {
 export interface ObsidianWriteResult {
   relativePath: string;
   absolutePath: string;
+}
+
+export interface JournalPathConfig {
+  languageRoot: string;
+  journalDir: string;
+}
+
+export interface JournalWriteRequest {
+  lesson: CompletedLessonSnapshot;
+  writtenAt: ISODateString;
+  pathConfig: JournalPathConfig;
+}
+
+export interface JournalWriteResult extends ObsidianWriteResult {
+  content: string;
 }
 
 export interface ObsidianStore {

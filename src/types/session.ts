@@ -1,4 +1,10 @@
-import type { AnswerFeedback, LanguageMode, LessonSummary, Question } from './lesson.js';
+import type {
+  AnswerFeedback,
+  LanguageMode,
+  LessonQuestionReview,
+  LessonSummary,
+  Question
+} from './lesson.js';
 import type { ISODateString } from './common.js';
 
 export type LessonStatus =
@@ -26,6 +32,17 @@ export interface SessionState {
   draftSummary: LessonSummary | null;
   createdAt: ISODateString | null;
   updatedAt: ISODateString | null;
+}
+
+export interface CompletedLessonSnapshot {
+  lessonId: string;
+  language: LanguageMode;
+  topic: string;
+  material: string;
+  reviewItems: LessonQuestionReview[];
+  summary: LessonSummary;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
 }
 
 export interface SessionStore {
