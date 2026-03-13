@@ -9,6 +9,7 @@ interface RawConfig {
   telegram?: Partial<AppConfig['telegram']>;
   session?: Partial<AppConfig['session']>;
   agent?: Partial<AppConfig['agent']>;
+  obsidian?: Partial<AppConfig['obsidian']>;
   logging?: Partial<AppConfig['logging']>;
 }
 
@@ -45,6 +46,13 @@ export async function loadConfig(): Promise<AppConfig> {
     agent: {
       command: fileConfig.agent?.command ?? getDefaultAgentCommand(),
       timeoutSec: Number(process.env.AGENT_TIMEOUT_SEC ?? fileConfig.agent?.timeoutSec ?? 180)
+    },
+    obsidian: {
+      vaultPath: process.env.OBSIDIAN_VAULT_PATH ?? fileConfig.obsidian?.vaultPath ?? '',
+      languageRoot: process.env.OBSIDIAN_LANGUAGE_ROOT ?? fileConfig.obsidian?.languageRoot ?? 'Languages',
+      journalDir: process.env.OBSIDIAN_JOURNAL_DIR ?? fileConfig.obsidian?.journalDir ?? 'Journal',
+      mistakesPath: process.env.OBSIDIAN_MISTAKES_PATH ?? fileConfig.obsidian?.mistakesPath ?? 'Mistakes.md',
+      expressionsPath: process.env.OBSIDIAN_EXPRESSIONS_PATH ?? fileConfig.obsidian?.expressionsPath ?? 'Expressions.md'
     },
     logging: {
       level: process.env.LOG_LEVEL ?? fileConfig.logging?.level ?? 'info'

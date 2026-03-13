@@ -21,6 +21,14 @@ export interface AgentConfig {
   timeoutSec: number;
 }
 
+export interface ObsidianConfig {
+  vaultPath: string;
+  languageRoot: string;
+  journalDir: string;
+  mistakesPath: string;
+  expressionsPath: string;
+}
+
 export interface LoggingConfig {
   level: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
 }
@@ -29,5 +37,6 @@ export interface AppConfig {
   telegram: TelegramConfig;
   session: SessionConfig;
   agent: AgentConfig;
+  obsidian: ObsidianConfig;
   logging: LoggingConfig;
 }
