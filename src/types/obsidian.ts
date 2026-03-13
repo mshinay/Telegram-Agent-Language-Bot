@@ -40,6 +40,30 @@ export interface JournalWriteResult extends ObsidianWriteResult {
   content: string;
 }
 
+export interface MistakesWriteRequest {
+  lesson: CompletedLessonSnapshot;
+  writtenAt: ISODateString;
+  mistakesPath: string;
+}
+
+export interface MistakesWriteResult extends ObsidianWriteResult {
+  written: boolean;
+  content: string;
+  entriesCount: number;
+}
+
+export interface ExpressionsWriteRequest {
+  lesson: CompletedLessonSnapshot;
+  writtenAt: ISODateString;
+  expressionsPath: string;
+}
+
+export interface ExpressionsWriteResult extends ObsidianWriteResult {
+  written: boolean;
+  content: string;
+  entriesCount: number;
+}
+
 export interface ObsidianStore {
   resolvePath(relativePath: string): string;
   exists(relativePath: string): Promise<boolean>;

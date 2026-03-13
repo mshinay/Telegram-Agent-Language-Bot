@@ -35,3 +35,7 @@ export function prepareMarkdownForWrite(content: string, mode: ObsidianWriteMode
 
   return normalized.endsWith('\n') ? normalized : `${normalized}\n`;
 }
+
+export function normalizeMarkdownLine(content: string): string {
+  return normalizeMarkdownContent(content).replace(/\s+/g, ' ').trim();
+}

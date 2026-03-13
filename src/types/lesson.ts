@@ -30,6 +30,18 @@ export interface LessonQuestionReview {
   feedback: AnswerFeedback;
 }
 
+export interface MistakeRecord {
+  text: string;
+  source: 'summary' | 'feedback';
+  questionId: number | null;
+}
+
+export interface ExpressionRecord {
+  text: string;
+  source: 'summary' | 'natural_version' | 'alternative';
+  questionId: number | null;
+}
+
 export interface LessonSummary {
   topic: string;
   strengths: string[];
