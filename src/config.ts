@@ -49,10 +49,12 @@ export async function loadConfig(): Promise<AppConfig> {
     },
     obsidian: {
       vaultPath: process.env.OBSIDIAN_VAULT_PATH ?? fileConfig.obsidian?.vaultPath ?? '',
-      languageRoot: process.env.OBSIDIAN_LANGUAGE_ROOT ?? fileConfig.obsidian?.languageRoot ?? 'Languages',
+      languageRoot: process.env.OBSIDIAN_LANGUAGE_ROOT ?? fileConfig.obsidian?.languageRoot ?? 'Language',
       journalDir: process.env.OBSIDIAN_JOURNAL_DIR ?? fileConfig.obsidian?.journalDir ?? 'Journal',
-      mistakesPath: process.env.OBSIDIAN_MISTAKES_PATH ?? fileConfig.obsidian?.mistakesPath ?? 'Mistakes.md',
-      expressionsPath: process.env.OBSIDIAN_EXPRESSIONS_PATH ?? fileConfig.obsidian?.expressionsPath ?? 'Expressions.md'
+      japaneseDir: process.env.OBSIDIAN_JAPANESE_DIR ?? fileConfig.obsidian?.japaneseDir ?? 'Japanese',
+      englishDir: process.env.OBSIDIAN_ENGLISH_DIR ?? fileConfig.obsidian?.englishDir ?? 'English',
+      mistakesDir: process.env.OBSIDIAN_MISTAKES_DIR ?? fileConfig.obsidian?.mistakesDir ?? 'Mistakes',
+      expressionsDir: process.env.OBSIDIAN_EXPRESSIONS_DIR ?? fileConfig.obsidian?.expressionsDir ?? 'Expressions'
     },
     logging: {
       level: process.env.LOG_LEVEL ?? fileConfig.logging?.level ?? 'info'

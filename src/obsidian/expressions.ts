@@ -1,10 +1,30 @@
+import path from 'node:path';
+
 import type { ExpressionRecord } from '../types/lesson.js';
 import type {
+  ExpressionsPathConfig,
   ExpressionsWriteRequest,
   ExpressionsWriteResult,
   ObsidianStore
 } from '../types/obsidian.js';
 import { normalizeMarkdownLine } from '../utils/markdown.js';
+
+function getLanguageDirectory(
+  language: ExpressionsWriteRequest['lesson']['language'],
+  pathConfig: Pick<ExpressionsPathConfig, 'japaneseDir' | 'englishDir'>
+): string {
+  return language === 'ja' ? pathConfig.japaneseDir : pathConfig.englishDir;
+}
+
+export function buildExpressionsNotePath(
+  input: Pick<ExpressionsWriteRequest, 'lesson' | 'pathConfig'>
+): string {
+  return path.posix.join(
+    input.pathConfig.languageRoot,
+    getLanguageDirectory(input.lesson.language, input.pathConfig),
+    `${input.pathConfig.expressionsDir}.md`
+  );
+}
 
 function buildExpressionKey(record: ExpressionRecord): string {
   return `${record.source}:${record.questionId ?? 'summary'}:${record.text}`;
@@ -103,11 +123,12 @@ export async function writeExpressionsEntry(
   store: ObsidianStore,
   request: ExpressionsWriteRequest
 ): Promise<ExpressionsWriteResult> {
+  const relativePath = buildExpressionsNotePath(request);
   const rendered = renderExpressionsMarkdown(request);
   if (rendered.entries.length === 0) {
     return {
-      relativePath: request.expressionsPath,
-      absolutePath: store.resolvePath(request.expressionsPath),
+      relativePath,
+      absolutePath: store.resolvePath(relativePath),
       written: false,
       content: '',
       entriesCount: 0
@@ -115,7 +136,7 @@ export async function writeExpressionsEntry(
   }
 
   const result = await store.write({
-    relativePath: request.expressionsPath,
+    relativePath,
     content: rendered.content,
     mode: 'append'
   });

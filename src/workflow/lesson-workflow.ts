@@ -3,13 +3,21 @@ import { randomUUID } from 'node:crypto';
 import type { Logger } from '../logger.js';
 import type { AgentAdapter } from '../agent/agent-adapter.js';
 import type { RouteAction } from '../types/router.js';
-import type { SessionState, SessionStore, AnswerRecord } from '../types/session.js';
+import type { ObsidianConfig } from '../types/common.js';
+import type { SessionState, SessionStore, AnswerRecord, CompletedLessonSnapshot } from '../types/session.js';
 import type { LanguageMode, LessonPlan } from '../types/lesson.js';
 import type { AppReply } from '../types/presentation.js';
+import type { ObsidianStore } from '../types/obsidian.js';
+import { createEmptySessionState } from '../session/default-session.js';
+import { writeJournalEntry } from '../obsidian/journal.js';
+import { writeMistakesEntry } from '../obsidian/mistakes.js';
+import { writeExpressionsEntry } from '../obsidian/expressions.js';
 
 export interface LessonWorkflowDeps {
   agentAdapter: AgentAdapter;
   sessionStore: SessionStore;
+  obsidianStore: ObsidianStore;
+  obsidianConfig: ObsidianConfig;
   logger: Logger;
 }
 
@@ -32,6 +40,18 @@ function toLessonPlan(session: SessionState): LessonPlan | null {
 
 function createStatusReply(title: string, lines: string[]): AppReply {
   return { type: 'status', title, lines };
+}
+
+function createSummaryDraftReply(session: SessionState): AppReply {
+  if (!session.language || !session.draftSummary) {
+    throw new Error('Cannot create summary draft reply without language and draft summary');
+  }
+
+  return {
+    type: 'summary_draft',
+    language: session.language,
+    summary: session.draftSummary
+  };
 }
 
 function createStartedSession(language: LanguageMode, lesson: LessonPlan): SessionState {
@@ -61,14 +81,56 @@ function createAnswerRecord(questionId: number, answer: string, feedback: Answer
   };
 }
 
+function toCompletedLessonSnapshot(session: SessionState): CompletedLessonSnapshot {
+  if (
+    !session.lessonId ||
+    !session.language ||
+    !session.topic ||
+    !session.material ||
+    !session.draftSummary ||
+    !session.createdAt ||
+    !session.updatedAt
+  ) {
+    throw new Error('Cannot build completed lesson snapshot from incomplete session');
+  }
+
+  const reviewItems = session.answers.flatMap((answerRecord) => {
+    const question = session.questions.find((item) => item.id === answerRecord.questionId);
+    if (!question) {
+      return [];
+    }
+
+    return [{
+      question,
+      answer: answerRecord.answer,
+      feedback: answerRecord.feedback
+    }];
+  });
+
+  return {
+    lessonId: session.lessonId,
+    language: session.language,
+    topic: session.topic,
+    material: session.material,
+    reviewItems,
+    summary: session.draftSummary,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt
+  };
+}
+
 export class LessonWorkflow {
   private readonly agentAdapter: AgentAdapter;
   private readonly sessionStore: SessionStore;
+  private readonly obsidianStore: ObsidianStore;
+  private readonly obsidianConfig: ObsidianConfig;
   private readonly logger: Logger;
 
   public constructor(deps: LessonWorkflowDeps) {
     this.agentAdapter = deps.agentAdapter;
     this.sessionStore = deps.sessionStore;
+    this.obsidianStore = deps.obsidianStore;
+    this.obsidianConfig = deps.obsidianConfig;
     this.logger = deps.logger;
   }
 
@@ -82,6 +144,12 @@ export class LessonWorkflow {
         return this.handleShowSummary(session);
       case 'finish_lesson':
         return this.handleFinishLesson(session);
+      case 'confirm_write':
+        return this.handleConfirmWrite(session);
+      case 'rewrite_summary':
+        return this.handleRewriteSummary(session);
+      case 'discard_summary':
+        return this.handleDiscardSummary(session);
       case 'submit_answer':
         return this.handleSubmitAnswer(action.text, session);
       case 'invalid':
@@ -143,11 +211,7 @@ export class LessonWorkflow {
   private async handleShowSummary(session: SessionState): Promise<LessonWorkflowResult> {
     if (session.draftSummary && session.language) {
       return {
-        reply: {
-          type: 'summary_draft',
-          language: session.language,
-          summary: session.draftSummary
-        },
+        reply: createSummaryDraftReply(session),
         session
       };
     }
@@ -202,11 +266,7 @@ export class LessonWorkflow {
     await this.sessionStore.save(nextSession);
 
     return {
-      reply: {
-        type: 'summary_draft',
-        language: session.language,
-        summary
-      },
+      reply: createSummaryDraftReply(nextSession),
       session: nextSession
     };
   }
@@ -262,11 +322,7 @@ export class LessonWorkflow {
       await this.sessionStore.save(nextSession);
 
       return {
-        reply: {
-          type: 'summary_draft',
-          language: session.language,
-          summary
-        },
+        reply: createSummaryDraftReply(nextSession),
         session: nextSession
       };
     }
@@ -290,6 +346,149 @@ export class LessonWorkflow {
         feedback,
         nextQuestion
       },
+      session: nextSession
+    };
+  }
+
+  private async handleConfirmWrite(session: SessionState): Promise<LessonWorkflowResult> {
+    if (session.status !== 'awaiting_summary_confirmation' || !session.draftSummary || !session.language) {
+      return {
+        reply: createStatusReply('[Summary]', ['当前没有可确认写入的 summary draft。']),
+        session
+      };
+    }
+
+    const snapshot = toCompletedLessonSnapshot(session);
+    const writtenAt = new Date().toISOString();
+
+    try {
+      const journalResult = await writeJournalEntry(this.obsidianStore, {
+        lesson: snapshot,
+        writtenAt,
+        pathConfig: {
+          languageRoot: this.obsidianConfig.languageRoot,
+          journalDir: this.obsidianConfig.journalDir
+        }
+      });
+      const mistakesResult = await writeMistakesEntry(this.obsidianStore, {
+        lesson: snapshot,
+        writtenAt,
+        pathConfig: {
+          languageRoot: this.obsidianConfig.languageRoot,
+          japaneseDir: this.obsidianConfig.japaneseDir,
+          englishDir: this.obsidianConfig.englishDir,
+          mistakesDir: this.obsidianConfig.mistakesDir
+        }
+      });
+      const expressionsResult = await writeExpressionsEntry(this.obsidianStore, {
+        lesson: snapshot,
+        writtenAt,
+        pathConfig: {
+          languageRoot: this.obsidianConfig.languageRoot,
+          japaneseDir: this.obsidianConfig.japaneseDir,
+          englishDir: this.obsidianConfig.englishDir,
+          expressionsDir: this.obsidianConfig.expressionsDir
+        }
+      });
+
+      this.logger.info(
+        {
+          event: 'summary_confirmed',
+          lessonId: snapshot.lessonId,
+          journalPath: journalResult.relativePath,
+          mistakesPath: mistakesResult.relativePath,
+          mistakesWritten: mistakesResult.written,
+          expressionsPath: expressionsResult.relativePath,
+          expressionsWritten: expressionsResult.written
+        },
+        'Confirmed lesson summary and wrote Obsidian notes'
+      );
+
+      await this.sessionStore.clear();
+      const nextSession = createEmptySessionState();
+
+      return {
+        reply: createStatusReply('[Write Success]', [
+          '本轮训练已写入 Obsidian，session 已清理。',
+          `Journal：${journalResult.relativePath}`,
+          mistakesResult.written
+            ? `Mistakes：已追加 ${mistakesResult.entriesCount} 条到 ${mistakesResult.relativePath}`
+            : `Mistakes：本轮无可追加条目，未写入 ${mistakesResult.relativePath}`,
+          expressionsResult.written
+            ? `Expressions：已追加 ${expressionsResult.entriesCount} 条到 ${expressionsResult.relativePath}`
+            : `Expressions：本轮无可追加条目，未写入 ${expressionsResult.relativePath}`,
+          '现在可以重新开始 /ja 或 /en。'
+        ]),
+        session: nextSession
+      };
+    } catch (error) {
+      this.logger.error(
+        {
+          event: 'summary_confirm_write_failed',
+          lessonId: session.lessonId,
+          error
+        },
+        'Failed to confirm lesson summary write'
+      );
+
+      return {
+        reply: createStatusReply('[Write Failed]', [
+          '写入 Obsidian 失败，当前 summary draft 已保留。',
+          '你可以稍后再次发送“确认写入”，或发送“重写总结”/“不写入”。'
+        ]),
+        session
+      };
+    }
+  }
+
+  private async handleRewriteSummary(session: SessionState): Promise<LessonWorkflowResult> {
+    if (session.status !== 'awaiting_summary_confirmation' || !session.language) {
+      return {
+        reply: createStatusReply('[Summary]', ['当前没有可重写的 summary draft。']),
+        session
+      };
+    }
+
+    const lesson = toLessonPlan(session);
+    if (!lesson) {
+      throw new Error('Cannot rewrite summary without lesson data');
+    }
+
+    const summary = await this.agentAdapter.generateSummary({
+      language: session.language,
+      lesson,
+      answers: session.answers
+    });
+    const nextSession: SessionState = {
+      ...session,
+      draftSummary: summary,
+      updatedAt: new Date().toISOString()
+    };
+
+    await this.sessionStore.save(nextSession);
+
+    return {
+      reply: createSummaryDraftReply(nextSession),
+      session: nextSession
+    };
+  }
+
+  private async handleDiscardSummary(session: SessionState): Promise<LessonWorkflowResult> {
+    if (session.status !== 'awaiting_summary_confirmation') {
+      return {
+        reply: createStatusReply('[Summary]', ['当前没有可放弃的 summary draft。']),
+        session
+      };
+    }
+
+    await this.sessionStore.clear();
+    const nextSession = createEmptySessionState();
+
+    return {
+      reply: createStatusReply('[Summary Discarded]', [
+        '已放弃本轮 summary draft，session 已清理。',
+        '现在可以重新开始 /ja 或 /en。'
+      ]),
       session: nextSession
     };
   }

@@ -19,8 +19,10 @@ export const appConfigSchema = z.object({
     vaultPath: z.string().min(1),
     languageRoot: z.string().min(1),
     journalDir: z.string().min(1),
-    mistakesPath: z.string().min(1),
-    expressionsPath: z.string().min(1)
+    japaneseDir: z.string().min(1),
+    englishDir: z.string().min(1),
+    mistakesDir: z.string().min(1),
+    expressionsDir: z.string().min(1)
   }),
   logging: z.object({
     level: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])

@@ -134,7 +134,13 @@ export function formatSummaryDraftMessage(input: SummaryDraftFormatInput): strin
     formatList(input.summary.reviewPoints),
     '',
     '5. 本次总体评价',
-    input.summary.overallComment
+    input.summary.overallComment,
+    '',
+    '可执行动作：',
+    '- 确认写入',
+    '- 重写总结',
+    '- 不写入',
+    '- /summary'
   ].join('\n');
 }
 

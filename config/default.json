@@ -11,10 +11,12 @@
   },
   "obsidian": {
     "vaultPath": "",
-    "languageRoot": "Languages",
+    "languageRoot": "Language",
     "journalDir": "Journal",
-    "mistakesPath": "Mistakes.md",
-    "expressionsPath": "Expressions.md"
+    "japaneseDir": "Japanese",
+    "englishDir": "English",
+    "mistakesDir": "Mistakes",
+    "expressionsDir": "Expressions"
   },
   "logging": {
     "level": "info"

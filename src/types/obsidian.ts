@@ -40,10 +40,20 @@ export interface JournalWriteResult extends ObsidianWriteResult {
   content: string;
 }
 
+export interface LanguageNotePathConfig {
+  languageRoot: string;
+  japaneseDir: string;
+  englishDir: string;
+}
+
+export interface MistakesPathConfig extends LanguageNotePathConfig {
+  mistakesDir: string;
+}
+
 export interface MistakesWriteRequest {
   lesson: CompletedLessonSnapshot;
   writtenAt: ISODateString;
-  mistakesPath: string;
+  pathConfig: MistakesPathConfig;
 }
 
 export interface MistakesWriteResult extends ObsidianWriteResult {
@@ -52,10 +62,14 @@ export interface MistakesWriteResult extends ObsidianWriteResult {
   entriesCount: number;
 }
 
+export interface ExpressionsPathConfig extends LanguageNotePathConfig {
+  expressionsDir: string;
+}
+
 export interface ExpressionsWriteRequest {
   lesson: CompletedLessonSnapshot;
   writtenAt: ISODateString;
-  expressionsPath: string;
+  pathConfig: ExpressionsPathConfig;
 }
 
 export interface ExpressionsWriteResult extends ObsidianWriteResult {

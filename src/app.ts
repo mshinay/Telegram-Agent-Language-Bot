@@ -5,6 +5,7 @@ import { CodexAdapter } from './agent/codex-adapter.js';
 import { LocalProcessRunner } from './agent/process-runner.js';
 import { createLogger } from './logger.js';
 import { CommandRouter } from './router/command-router.js';
+import { FileObsidianStore } from './obsidian/obsidian-store.js';
 import { FileSessionStore } from './session/file-session-store.js';
 import { createBot } from './telegram/bot.js';
 import { LessonWorkflow } from './workflow/lesson-workflow.js';
@@ -27,10 +28,16 @@ export async function createApp(): Promise<App> {
     cwd: process.cwd()
   });
   const sessionStore = new FileSessionStore(config.session.path, logger);
+  const obsidianStore = new FileObsidianStore({
+    vaultPath: config.obsidian.vaultPath,
+    logger
+  });
   const router = new CommandRouter();
   const workflow = new LessonWorkflow({
     agentAdapter,
     sessionStore,
+    obsidianStore,
+    obsidianConfig: config.obsidian,
     logger
   });
   const bot = createBot({

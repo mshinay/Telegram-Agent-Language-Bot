@@ -25,6 +25,20 @@ export class CommandRouter {
       return { type: 'finish_lesson' };
     }
 
+    if (session.status === 'awaiting_summary_confirmation') {
+      if (normalized === '确认写入') {
+        return { type: 'confirm_write' };
+      }
+
+      if (normalized === '重写总结') {
+        return { type: 'rewrite_summary' };
+      }
+
+      if (normalized === '不写入') {
+        return { type: 'discard_summary' };
+      }
+    }
+
     if (!normalized) {
       return { type: 'invalid', message: 'empty_message' };
     }

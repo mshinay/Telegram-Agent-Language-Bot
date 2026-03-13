@@ -25,8 +25,10 @@ export interface ObsidianConfig {
   vaultPath: string;
   languageRoot: string;
   journalDir: string;
-  mistakesPath: string;
-  expressionsPath: string;
+  japaneseDir: string;
+  englishDir: string;
+  mistakesDir: string;
+  expressionsDir: string;
 }
 
 export interface LoggingConfig {

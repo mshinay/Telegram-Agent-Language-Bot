@@ -1,10 +1,30 @@
+import path from 'node:path';
+
 import type { MistakeRecord } from '../types/lesson.js';
 import type {
+  MistakesPathConfig,
   MistakesWriteRequest,
   MistakesWriteResult,
   ObsidianStore
 } from '../types/obsidian.js';
 import { normalizeMarkdownLine } from '../utils/markdown.js';
+
+function getLanguageDirectory(
+  language: MistakesWriteRequest['lesson']['language'],
+  pathConfig: Pick<MistakesPathConfig, 'japaneseDir' | 'englishDir'>
+): string {
+  return language === 'ja' ? pathConfig.japaneseDir : pathConfig.englishDir;
+}
+
+export function buildMistakesNotePath(
+  input: Pick<MistakesWriteRequest, 'lesson' | 'pathConfig'>
+): string {
+  return path.posix.join(
+    input.pathConfig.languageRoot,
+    getLanguageDirectory(input.lesson.language, input.pathConfig),
+    `${input.pathConfig.mistakesDir}.md`
+  );
+}
 
 function buildMistakeKey(record: MistakeRecord): string {
   return `${record.source}:${record.questionId ?? 'summary'}:${record.text}`;
@@ -94,11 +114,12 @@ export async function writeMistakesEntry(
   store: ObsidianStore,
   request: MistakesWriteRequest
 ): Promise<MistakesWriteResult> {
+  const relativePath = buildMistakesNotePath(request);
   const rendered = renderMistakesMarkdown(request);
   if (rendered.entries.length === 0) {
     return {
-      relativePath: request.mistakesPath,
-      absolutePath: store.resolvePath(request.mistakesPath),
+      relativePath,
+      absolutePath: store.resolvePath(relativePath),
       written: false,
       content: '',
       entriesCount: 0
@@ -106,7 +127,7 @@ export async function writeMistakesEntry(
   }
 
   const result = await store.write({
-    relativePath: request.mistakesPath,
+    relativePath,
     content: rendered.content,
     mode: 'append'
   });
