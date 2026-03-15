@@ -54,6 +54,47 @@ function createSummaryDraftReply(session: SessionState): AppReply {
   };
 }
 
+function createCurrentQuestionReply(session: SessionState): AppReply {
+  if (session.status !== 'in_lesson' || !session.language) {
+    throw new Error('Cannot create current question reply without active lesson');
+  }
+
+  const question = session.questions[session.currentQuestionIndex];
+  if (!question) {
+    throw new Error('Cannot create current question reply without current question');
+  }
+
+  return {
+    type: 'current_question',
+    language: session.language,
+    question,
+    currentQuestionIndex: session.currentQuestionIndex,
+    totalQuestions: session.questions.length
+  };
+}
+
+function createInterruptedLessonPrompt(session: SessionState, requestedLanguage: LanguageMode): AppReply {
+  if (session.status !== 'interrupted' || !session.language) {
+    throw new Error('Cannot create interrupted lesson prompt without interrupted lesson');
+  }
+
+  const currentQuestionNumber = Math.min(session.currentQuestionIndex + 1, session.questions.length);
+  const answeredCount = session.answers.length;
+  const requestedLabel = requestedLanguage === 'ja' ? 'ja' : 'en';
+
+  return createStatusReply('[Resume Lesson]', [
+    '检测到上次有未完成的训练。',
+    `主题：${session.topic ?? '未命名主题'}`,
+    `原训练语言：${session.language}`,
+    `当前进度：${currentQuestionNumber}/${session.questions.length}`,
+    `已完成题数：${answeredCount}`,
+    `本次请求语言：${requestedLabel}`,
+    '可执行动作：',
+    '- 恢复上次训练',
+    '- 放弃并开始新的训练'
+  ]);
+}
+
 function createStartedSession(language: LanguageMode, lesson: LessonPlan): SessionState {
   const now = new Date().toISOString();
 
@@ -141,6 +182,10 @@ export class LessonWorkflow {
         return { reply: { type: 'text', text: 'pong' }, session };
       case 'start_lesson':
         return this.handleStartLesson(action.language, session);
+      case 'resume_interrupted_lesson':
+        return this.handleResumeInterruptedLesson(session);
+      case 'discard_and_restart_lesson':
+        return this.handleDiscardAndRestartLesson(session);
       case 'show_summary':
         return this.handleShowSummary(session);
       case 'finish_lesson':
@@ -191,22 +236,22 @@ export class LessonWorkflow {
       };
     }
 
-    this.logger.info({ event: 'lesson_start_requested', language }, 'Starting lesson generation');
+    if (session.status === 'interrupted') {
+      const nextSession: SessionState = {
+        ...session,
+        pendingStartLanguage: language,
+        updatedAt: new Date().toISOString()
+      };
 
-    const lesson = await this.agentAdapter.generateLessonPlan({ language });
-    const nextSession = createStartedSession(language, lesson);
+      await this.sessionStore.save(nextSession);
 
-    await this.sessionStore.save(nextSession);
+      return {
+        reply: createInterruptedLessonPrompt(nextSession, language),
+        session: nextSession
+      };
+    }
 
-    return {
-      reply: {
-        type: 'lesson_start',
-        language,
-        lesson,
-        currentQuestionIndex: 0
-      },
-      session: nextSession
-    };
+    return this.startNewLesson(language);
   }
 
   private async handleShowSummary(session: SessionState): Promise<LessonWorkflowResult> {
@@ -351,6 +396,50 @@ export class LessonWorkflow {
     };
   }
 
+  private async handleResumeInterruptedLesson(session: SessionState): Promise<LessonWorkflowResult> {
+    if (session.status !== 'interrupted' || !session.language) {
+      return {
+        reply: createStatusReply('[Lesson Status]', ['当前没有可恢复的训练。']),
+        session
+      };
+    }
+
+    const nextSession: SessionState = {
+      ...session,
+      status: 'in_lesson',
+      pendingStartLanguage: null,
+      updatedAt: new Date().toISOString()
+    };
+
+    await this.sessionStore.save(nextSession);
+
+    return {
+      reply: createCurrentQuestionReply(nextSession),
+      session: nextSession
+    };
+  }
+
+  private async handleDiscardAndRestartLesson(session: SessionState): Promise<LessonWorkflowResult> {
+    if (session.status !== 'interrupted') {
+      return {
+        reply: createStatusReply('[Lesson Status]', ['当前没有可放弃并重开的中断训练。']),
+        session
+      };
+    }
+
+    if (!session.pendingStartLanguage) {
+      return {
+        reply: createStatusReply('[Resume Lesson]', [
+          '当前还没有记录本次要开始的新语言。',
+          '请先发送 /ja 或 /en，再选择“放弃并开始新的训练”。'
+        ]),
+        session
+      };
+    }
+
+    return this.startNewLesson(session.pendingStartLanguage);
+  }
+
   private async handleConfirmWrite(session: SessionState): Promise<LessonWorkflowResult> {
     if (session.status !== 'awaiting_summary_confirmation' || !session.draftSummary || !session.language) {
       return {
@@ -490,6 +579,25 @@ export class LessonWorkflow {
         '已放弃本轮 summary draft，session 已清理。',
         '现在可以重新开始 /ja 或 /en。'
       ]),
+      session: nextSession
+    };
+  }
+
+  private async startNewLesson(language: LanguageMode): Promise<LessonWorkflowResult> {
+    this.logger.info({ event: 'lesson_start_requested', language }, 'Starting lesson generation');
+
+    const lesson = await this.agentAdapter.generateLessonPlan({ language });
+    const nextSession = createStartedSession(language, lesson);
+
+    await this.sessionStore.save(nextSession);
+
+    return {
+      reply: {
+        type: 'lesson_start',
+        language,
+        lesson,
+        currentQuestionIndex: 0
+      },
       session: nextSession
     };
   }

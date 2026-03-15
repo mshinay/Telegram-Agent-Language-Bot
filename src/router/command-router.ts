@@ -25,6 +25,16 @@ export class CommandRouter {
       return { type: 'finish_lesson' };
     }
 
+    if (session.status === 'interrupted') {
+      if (normalized === '恢复上次训练') {
+        return { type: 'resume_interrupted_lesson' };
+      }
+
+      if (normalized === '放弃并开始新的训练') {
+        return { type: 'discard_and_restart_lesson' };
+      }
+    }
+
     if (session.status === 'awaiting_summary_confirmation') {
       if (normalized === '确认写入') {
         return { type: 'confirm_write' };
