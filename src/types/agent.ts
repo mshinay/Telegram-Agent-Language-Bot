@@ -7,6 +7,15 @@ export interface ProcessExecutionRequest {
   cwd?: string;
 }
 
+export type AgentTaskName = 'generateLessonPlan' | 'evaluateAnswer' | 'generateSummary';
+
+export type AgentTaskErrorCode =
+  | 'PROCESS_FAILED'
+  | 'OUTPUT_PARSE_FAILED'
+  | 'SCHEMA_VALIDATION_FAILED'
+  | 'RUNNER_FAILED'
+  | 'UNKNOWN';
+
 export interface ProcessExecutionResult {
   stdout: string;
   stderr: string;
@@ -57,5 +66,24 @@ export class ProcessExecutionError extends Error {
     };
     this.durationMs = options.durationMs;
     this.causeCode = options.causeCode;
+  }
+}
+
+export class AgentTaskError extends Error {
+  public readonly taskName: AgentTaskName;
+  public readonly code: AgentTaskErrorCode;
+
+  public constructor(
+    message: string,
+    options: {
+      taskName: AgentTaskName;
+      code: AgentTaskErrorCode;
+      cause?: unknown;
+    }
+  ) {
+    super(message, { cause: options.cause });
+    this.name = 'AgentTaskError';
+    this.taskName = options.taskName;
+    this.code = options.code;
   }
 }

@@ -105,16 +105,30 @@ export function createBot(deps: BotDeps): Bot {
 
       deps.logger.info(
         {
-          event: 'route_resolved',
+          event: 'workflow_action_received',
           chatId,
+          textLength: text.length,
           status: session.status,
+          lessonId: session.lessonId,
           action: action.type
         },
-        'Resolved incoming text message'
+        'Received workflow action from Telegram chat'
       );
 
       try {
-        const result = await deps.workflow.handle(action, session);
+        const result = await deps.workflow.handle(action, session, { chatId });
+        deps.logger.info(
+          {
+            event: 'telegram_reply_sent',
+            chatId,
+            action: action.type,
+            status: result.session.status,
+            previousStatus: session.status,
+            lessonId: result.session.lessonId ?? session.lessonId,
+            replyType: result.reply.type
+          },
+          'Completed workflow action for Telegram chat'
+        );
         await sendWorkflowReply(ctx, result.reply, deps.config.telegram.replyCharLimit);
       } catch (error) {
         deps.logger.error(
@@ -122,11 +136,13 @@ export function createBot(deps: BotDeps): Bot {
             event: 'workflow_handle_failed',
             chatId,
             action: action.type,
+            status: session.status,
+            lessonId: session.lessonId,
             error
           },
           'Failed to handle lesson workflow action'
         );
-        await ctx.reply('当前训练流程执行失败，请稍后重试。');
+        await ctx.reply('当前发生未预期错误，请稍后重试。');
       }
     });
   });

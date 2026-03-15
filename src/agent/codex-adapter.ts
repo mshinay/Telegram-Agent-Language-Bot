@@ -1,6 +1,6 @@
 import type { Logger } from '../logger.js';
 import { answerFeedbackSchema, lessonPlanSchema, lessonSummarySchema } from '../schemas/lesson.js';
-import { type ProcessRunner } from '../types/agent.js';
+import { AgentTaskError, ProcessExecutionError, type AgentTaskName, type ProcessRunner } from '../types/agent.js';
 import {
   buildEvaluateAnswerPrompt,
   type EvaluateAnswerPromptInput
@@ -13,7 +13,12 @@ import type {
   GenerateLessonPlanInput,
   GenerateSummaryInput
 } from './agent-adapter.js';
-import { parseAgentJson } from './parser.js';
+import {
+  AgentExecutionFailedError,
+  AgentJsonParseError,
+  AgentSchemaValidationError,
+  parseAgentJson
+} from './parser.js';
 
 export interface CodexAdapterOptions {
   logger: Logger;
@@ -22,6 +27,17 @@ export interface CodexAdapterOptions {
   timeoutMs: number;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+}
+
+interface AgentRequestContext {
+  stage: 'lesson_plan' | 'answer_evaluation' | 'summary_generation';
+  language: string;
+  questionId?: number;
+  questionType?: string;
+  previousQuestionCount?: number;
+  answerCount?: number;
+  questionCount?: number;
+  topic?: string;
 }
 
 function formatPrompt(input: { system: string; user: string }): string {
@@ -56,42 +72,75 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   public async generateLessonPlan(input: GenerateLessonPlanInput) {
-    const prompt = buildLessonPlanPrompt(input satisfies GenerateLessonPlanPromptInput);
-    const result = await this.runCodexTask('generateLessonPlan', prompt);
+    return this.executeTask('generateLessonPlan', async () => {
+      const prompt = buildLessonPlanPrompt(input satisfies GenerateLessonPlanPromptInput);
+      const result = await this.runCodexTask('generateLessonPlan', prompt, {
+        stage: 'lesson_plan',
+        language: input.language
+      });
 
-    return parseAgentJson({
-      taskName: 'generateLessonPlan',
-      schema: lessonPlanSchema,
-      result,
-      logger: this.logger
+      return parseAgentJson({
+        taskName: 'generateLessonPlan',
+        schema: lessonPlanSchema,
+        result,
+        logger: this.logger
+      });
     });
   }
 
   public async evaluateAnswer(input: EvaluateAnswerInput) {
-    const prompt = buildEvaluateAnswerPrompt(input satisfies EvaluateAnswerPromptInput);
-    const result = await this.runCodexTask('evaluateAnswer', prompt);
+    return this.executeTask('evaluateAnswer', async () => {
+      const prompt = buildEvaluateAnswerPrompt(input satisfies EvaluateAnswerPromptInput);
+      const result = await this.runCodexTask('evaluateAnswer', prompt, {
+        stage: 'answer_evaluation',
+        language: input.language,
+        questionId: input.question.id,
+        questionType: input.question.type,
+        previousQuestionCount: input.previousQuestions?.length ?? 0
+      });
 
-    return parseAgentJson({
-      taskName: 'evaluateAnswer',
-      schema: answerFeedbackSchema,
-      result,
-      logger: this.logger
+      return parseAgentJson({
+        taskName: 'evaluateAnswer',
+        schema: answerFeedbackSchema,
+        result,
+        logger: this.logger
+      });
     });
   }
 
   public async generateSummary(input: GenerateSummaryInput) {
-    const prompt = buildSummaryPrompt(input satisfies GenerateSummaryPromptInput);
-    const result = await this.runCodexTask('generateSummary', prompt);
+    return this.executeTask('generateSummary', async () => {
+      const prompt = buildSummaryPrompt(input satisfies GenerateSummaryPromptInput);
+      const result = await this.runCodexTask('generateSummary', prompt, {
+        stage: 'summary_generation',
+        language: input.language,
+        answerCount: input.answers.length,
+        questionCount: input.lesson.questions.length,
+        topic: input.lesson.topic
+      });
 
-    return parseAgentJson({
-      taskName: 'generateSummary',
-      schema: lessonSummarySchema,
-      result,
-      logger: this.logger
+      return parseAgentJson({
+        taskName: 'generateSummary',
+        schema: lessonSummarySchema,
+        result,
+        logger: this.logger
+      });
     });
   }
 
-  private async runCodexTask(taskName: string, prompt: { system: string; user: string }) {
+  private async executeTask<T>(taskName: AgentTaskName, task: () => Promise<T>): Promise<T> {
+    try {
+      return await task();
+    } catch (error) {
+      throw this.toAgentTaskError(taskName, error);
+    }
+  }
+
+  private async runCodexTask(
+    taskName: string,
+    prompt: { system: string; user: string },
+    context: AgentRequestContext
+  ) {
     const command = this.command[0]!;
     const baseArgs = this.command.slice(1);
     const stdin = formatPrompt(prompt);
@@ -102,6 +151,7 @@ export class CodexAdapter implements AgentAdapter {
         event: 'agent_request_started',
         backend: 'codex',
         taskName,
+        ...context,
         command,
         args,
         timeoutMs: this.timeoutMs,
@@ -124,6 +174,7 @@ export class CodexAdapter implements AgentAdapter {
         event: 'agent_request_completed',
         backend: 'codex',
         taskName,
+        ...context,
         ok: result.ok,
         exitCode: result.exitCode,
         timedOut: result.timedOut,
@@ -135,5 +186,49 @@ export class CodexAdapter implements AgentAdapter {
     );
 
     return result;
+  }
+
+  private toAgentTaskError(taskName: AgentTaskName, error: unknown): AgentTaskError {
+    if (error instanceof AgentTaskError) {
+      return error;
+    }
+
+    if (error instanceof AgentExecutionFailedError) {
+      return new AgentTaskError('Agent process did not complete successfully', {
+        taskName,
+        code: 'PROCESS_FAILED',
+        cause: error
+      });
+    }
+
+    if (error instanceof AgentJsonParseError) {
+      return new AgentTaskError('Agent output could not be parsed as valid JSON', {
+        taskName,
+        code: 'OUTPUT_PARSE_FAILED',
+        cause: error
+      });
+    }
+
+    if (error instanceof AgentSchemaValidationError) {
+      return new AgentTaskError('Agent output failed schema validation', {
+        taskName,
+        code: 'SCHEMA_VALIDATION_FAILED',
+        cause: error
+      });
+    }
+
+    if (error instanceof ProcessExecutionError) {
+      return new AgentTaskError('Agent runner failed before process completion', {
+        taskName,
+        code: 'RUNNER_FAILED',
+        cause: error
+      });
+    }
+
+    return new AgentTaskError('Unexpected agent task failure', {
+      taskName,
+      code: 'UNKNOWN',
+      cause: error
+    });
   }
 }

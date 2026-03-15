@@ -38,10 +38,11 @@ async function normalizeStartupSession(sessionStore: FileSessionStore, logger: L
   await sessionStore.save(nextSession);
   logger.info(
     {
-      event: 'session_interrupted_on_startup',
+      event: 'session_marked_interrupted_on_boot',
       lessonId: nextSession.lessonId,
       language: nextSession.language,
-      previousStatus: session.status
+      previousStatus: session.status,
+      nextStatus: nextSession.status
     },
     'Marked in-progress lesson as interrupted on startup'
   );

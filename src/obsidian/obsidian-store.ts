@@ -115,6 +115,7 @@ export class FileObsidianStore implements ObsidianStore {
       this.logger.error(
         {
           event: 'obsidian_read_failed',
+          operation: 'read',
           vaultPath: this.vaultPath,
           relativePath: request.relativePath,
           absolutePath,
@@ -164,10 +165,12 @@ export class FileObsidianStore implements ObsidianStore {
       this.logger.error(
         {
           event: 'obsidian_write_failed',
+          operation: 'write',
           vaultPath: this.vaultPath,
           relativePath: request.relativePath,
           absolutePath,
           mode: request.mode,
+          contentBytes: Buffer.byteLength(request.content),
           error
         },
         'Failed to write Obsidian note'

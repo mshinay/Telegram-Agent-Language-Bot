@@ -4,6 +4,7 @@ import type { Logger } from '../logger.js';
 import type { AgentAdapter } from '../agent/agent-adapter.js';
 import type { RouteAction } from '../types/router.js';
 import type { ObsidianConfig } from '../types/common.js';
+import { AgentTaskError } from '../types/agent.js';
 import type { SessionState, SessionStore, AnswerRecord, CompletedLessonSnapshot } from '../types/session.js';
 import type { LanguageMode, LessonPlan } from '../types/lesson.js';
 import type { AppReply } from '../types/presentation.js';
@@ -26,6 +27,18 @@ export interface LessonWorkflowResult {
   session: SessionState;
 }
 
+export interface WorkflowHandleContext {
+  chatId?: number;
+}
+
+interface WorkflowLogContext {
+  action: RouteAction['type'];
+  status: SessionState['status'];
+  lessonId: SessionState['lessonId'];
+  language: SessionState['language'];
+  chatId?: number;
+}
+
 function toLessonPlan(session: SessionState): LessonPlan | null {
   if (!session.topic || !session.material || session.questions.length === 0) {
     return null;
@@ -40,6 +53,10 @@ function toLessonPlan(session: SessionState): LessonPlan | null {
 
 function createStatusReply(title: string, lines: string[]): AppReply {
   return { type: 'status', title, lines };
+}
+
+function createAgentFailureReply(title: string, lines: string[]): AppReply {
+  return createStatusReply(title, lines);
 }
 
 function createSummaryDraftReply(session: SessionState): AppReply {
@@ -167,6 +184,7 @@ export class LessonWorkflow {
   private readonly obsidianStore: ObsidianStore;
   private readonly obsidianConfig: ObsidianConfig;
   private readonly logger: Logger;
+  private currentHandleContext: WorkflowHandleContext | null = null;
 
   public constructor(deps: LessonWorkflowDeps) {
     this.agentAdapter = deps.agentAdapter;
@@ -176,38 +194,89 @@ export class LessonWorkflow {
     this.logger = deps.logger;
   }
 
-  public async handle(action: RouteAction, session: SessionState): Promise<LessonWorkflowResult> {
-    switch (action.type) {
-      case 'ping':
-        return { reply: { type: 'text', text: 'pong' }, session };
-      case 'start_lesson':
-        return this.handleStartLesson(action.language, session);
-      case 'resume_interrupted_lesson':
-        return this.handleResumeInterruptedLesson(session);
-      case 'discard_and_restart_lesson':
-        return this.handleDiscardAndRestartLesson(session);
-      case 'show_summary':
-        return this.handleShowSummary(session);
-      case 'finish_lesson':
-        return this.handleFinishLesson(session);
-      case 'confirm_write':
-        return this.handleConfirmWrite(session);
-      case 'rewrite_summary':
-        return this.handleRewriteSummary(session);
-      case 'discard_summary':
-        return this.handleDiscardSummary(session);
-      case 'submit_answer':
-        return this.handleSubmitAnswer(action.text, session);
-      case 'invalid':
-        return {
-          reply: createStatusReply('[Invalid Action]', ['当前输入在这个阶段不可用。', `原因：${action.message}`]),
-          session
-        };
-      default:
-        return {
-          reply: createStatusReply('[Workflow]', ['unsupported']),
-          session
-        };
+  private logBusinessFailure(event: string, context: Record<string, unknown>, error: unknown, message: string): void {
+    this.logger.error(
+      {
+        event,
+        ...context,
+        error
+      },
+      message
+    );
+  }
+
+  private createWorkflowLogContext(action: RouteAction['type'], session: SessionState): WorkflowLogContext {
+    return {
+      action,
+      status: session.status,
+      lessonId: session.lessonId,
+      language: session.language,
+      ...(this.currentHandleContext?.chatId !== undefined ? { chatId: this.currentHandleContext.chatId } : {})
+    };
+  }
+
+  private logActionCompleted(
+    action: RouteAction['type'],
+    previousSession: SessionState,
+    nextSession: SessionState,
+    context: Record<string, unknown> = {}
+  ): void {
+    this.logger.info(
+      {
+        event: 'workflow_action_completed',
+        action,
+        previousStatus: previousSession.status,
+        status: nextSession.status,
+        lessonId: nextSession.lessonId ?? previousSession.lessonId,
+        language: nextSession.language ?? previousSession.language,
+        ...context
+      },
+      'Completed workflow action'
+    );
+  }
+
+  public async handle(
+    action: RouteAction,
+    session: SessionState,
+    context: WorkflowHandleContext = {}
+  ): Promise<LessonWorkflowResult> {
+    this.currentHandleContext = context;
+
+    try {
+      switch (action.type) {
+        case 'ping':
+          return { reply: { type: 'text', text: 'pong' }, session };
+        case 'start_lesson':
+          return this.handleStartLesson(action.language, session);
+        case 'resume_interrupted_lesson':
+          return this.handleResumeInterruptedLesson(session);
+        case 'discard_and_restart_lesson':
+          return this.handleDiscardAndRestartLesson(session);
+        case 'show_summary':
+          return this.handleShowSummary(session);
+        case 'finish_lesson':
+          return this.handleFinishLesson(session);
+        case 'confirm_write':
+          return this.handleConfirmWrite(session);
+        case 'rewrite_summary':
+          return this.handleRewriteSummary(session);
+        case 'discard_summary':
+          return this.handleDiscardSummary(session);
+        case 'submit_answer':
+          return this.handleSubmitAnswer(action.text, session);
+        case 'invalid':
+          return {
+            reply: createStatusReply('[Invalid Action]', ['当前输入在这个阶段不可用。', `原因：${action.message}`]),
+            session
+          };
+        default:
+          return {
+            reply: createStatusReply('[Workflow]', ['unsupported']),
+            session
+          };
+      }
+    } finally {
+      this.currentHandleContext = null;
     }
   }
 
@@ -244,6 +313,21 @@ export class LessonWorkflow {
       };
 
       await this.sessionStore.save(nextSession);
+      this.logger.info(
+        {
+          event: 'lesson_recovery_prompted',
+          ...this.createWorkflowLogContext('start_lesson', session),
+          requestedLanguage: language,
+          pendingStartLanguage: nextSession.pendingStartLanguage,
+          currentQuestionIndex: session.currentQuestionIndex,
+          answerCount: session.answers.length
+        },
+        'Prompted user to resume or discard interrupted lesson'
+      );
+      this.logActionCompleted('start_lesson', session, nextSession, {
+        requestedLanguage: language,
+        outcome: 'recovery_prompted'
+      });
 
       return {
         reply: createInterruptedLessonPrompt(nextSession, language),
@@ -251,7 +335,34 @@ export class LessonWorkflow {
       };
     }
 
-    return this.startNewLesson(language);
+    try {
+      return await this.startNewLesson(language, session, 'start_lesson');
+    } catch (error) {
+      if (error instanceof AgentTaskError) {
+        this.logBusinessFailure(
+          'lesson_start_failed',
+          {
+            ...this.createWorkflowLogContext('start_lesson', session),
+            language,
+            taskName: error.taskName,
+            errorCode: error.code,
+            stage: 'lesson_generation'
+          },
+          error,
+          'Failed to start lesson'
+        );
+
+        return {
+          reply: createAgentFailureReply(
+            '[Lesson Start Failed]',
+            ['当前训练生成失败，请稍后重试开始本轮训练。']
+          ),
+          session
+        };
+      }
+
+      throw error;
+    }
   }
 
   private async handleShowSummary(session: SessionState): Promise<LessonWorkflowResult> {
@@ -297,11 +408,40 @@ export class LessonWorkflow {
       'Finishing lesson and generating summary'
     );
 
-    const summary = await this.agentAdapter.generateSummary({
-      language: session.language,
-      lesson,
-      answers: session.answers
-    });
+    let summary;
+
+    try {
+      summary = await this.agentAdapter.generateSummary({
+        language: session.language,
+        lesson,
+        answers: session.answers
+      });
+    } catch (error) {
+      if (error instanceof AgentTaskError) {
+        this.logBusinessFailure(
+          'summary_generation_failed',
+          {
+            ...this.createWorkflowLogContext('finish_lesson', session),
+            taskName: error.taskName,
+            errorCode: error.code,
+            stage: 'finish_lesson'
+          },
+          error,
+          'Failed to generate lesson summary during finish'
+        );
+
+        return {
+          reply: createAgentFailureReply(
+            '[Summary Failed]',
+            ['当前总结生成失败，请稍后重试，或继续保持当前训练状态。']
+          ),
+          session
+        };
+      }
+
+      throw error;
+    }
+
     const nextSession: SessionState = {
       ...session,
       status: 'awaiting_summary_confirmation',
@@ -310,6 +450,9 @@ export class LessonWorkflow {
     };
 
     await this.sessionStore.save(nextSession);
+    this.logActionCompleted('finish_lesson', session, nextSession, {
+      answerCount: nextSession.answers.length
+    });
 
     return {
       reply: createSummaryDraftReply(nextSession),
@@ -333,13 +476,42 @@ export class LessonWorkflow {
       throw new Error('Current question is missing for in_lesson session');
     }
 
-    const feedback = await this.agentAdapter.evaluateAnswer({
-      language: session.language,
-      question: currentQuestion,
-      userAnswer: text,
-      material: session.material,
-      previousQuestions: session.questions.slice(0, session.currentQuestionIndex)
-    });
+    let feedback;
+
+    try {
+      feedback = await this.agentAdapter.evaluateAnswer({
+        language: session.language,
+        question: currentQuestion,
+        userAnswer: text,
+        material: session.material,
+        previousQuestions: session.questions.slice(0, session.currentQuestionIndex)
+      });
+    } catch (error) {
+      if (error instanceof AgentTaskError) {
+        this.logBusinessFailure(
+          'answer_evaluation_failed',
+          {
+            ...this.createWorkflowLogContext('submit_answer', session),
+            questionId: currentQuestion.id,
+            taskName: error.taskName,
+            errorCode: error.code,
+            stage: 'answer_evaluation'
+          },
+          error,
+          'Failed to evaluate answer'
+        );
+
+        return {
+          reply: createAgentFailureReply(
+            '[Answer Feedback Failed]',
+            ['当前题反馈生成失败，请稍后重试本题。']
+          ),
+          session
+        };
+      }
+
+      throw error;
+    }
     const answerRecord = createAnswerRecord(currentQuestion.id, text, feedback);
     const answers = [...session.answers, answerRecord];
     const answeredQuestionIndex = session.currentQuestionIndex;
@@ -351,11 +523,41 @@ export class LessonWorkflow {
         throw new Error('Cannot generate summary after final answer without lesson data');
       }
 
-      const summary = await this.agentAdapter.generateSummary({
-        language: session.language,
-        lesson,
-        answers
-      });
+      let summary;
+
+      try {
+        summary = await this.agentAdapter.generateSummary({
+          language: session.language,
+          lesson,
+          answers
+        });
+      } catch (error) {
+        if (error instanceof AgentTaskError) {
+          this.logBusinessFailure(
+            'summary_generation_failed',
+            {
+              ...this.createWorkflowLogContext('submit_answer', session),
+              questionId: currentQuestion.id,
+              taskName: error.taskName,
+              errorCode: error.code,
+              stage: 'submit_answer_final'
+            },
+            error,
+            'Failed to generate summary after final answer'
+          );
+
+          return {
+            reply: createAgentFailureReply(
+              '[Summary Failed]',
+              ['当前总结生成失败，最后一题答案尚未保存，请稍后重试本题。']
+            ),
+            session
+          };
+        }
+
+        throw error;
+      }
+
       const nextSession: SessionState = {
         ...session,
         status: 'awaiting_summary_confirmation',
@@ -366,6 +568,10 @@ export class LessonWorkflow {
       };
 
       await this.sessionStore.save(nextSession);
+      this.logActionCompleted('submit_answer', session, nextSession, {
+        questionId: currentQuestion.id,
+        outcome: 'summary_draft_ready'
+      });
 
       return {
         reply: createSummaryDraftReply(nextSession),
@@ -382,6 +588,10 @@ export class LessonWorkflow {
     };
 
     await this.sessionStore.save(nextSession);
+    this.logActionCompleted('submit_answer', session, nextSession, {
+      questionId: currentQuestion.id,
+      nextQuestionId: nextQuestion?.id ?? null
+    });
 
     return {
       reply: {
@@ -412,6 +622,17 @@ export class LessonWorkflow {
     };
 
     await this.sessionStore.save(nextSession);
+    this.logger.info(
+      {
+        event: 'lesson_resumed',
+        ...this.createWorkflowLogContext('resume_interrupted_lesson', session),
+        nextStatus: nextSession.status,
+        currentQuestionIndex: nextSession.currentQuestionIndex,
+        answerCount: nextSession.answers.length
+      },
+      'Resumed interrupted lesson'
+    );
+    this.logActionCompleted('resume_interrupted_lesson', session, nextSession);
 
     return {
       reply: createCurrentQuestionReply(nextSession),
@@ -437,7 +658,22 @@ export class LessonWorkflow {
       };
     }
 
-    return this.startNewLesson(session.pendingStartLanguage);
+    const previousLessonId = session.lessonId;
+    const requestedLanguage = session.pendingStartLanguage;
+    const result = await this.startNewLesson(requestedLanguage, session, 'discard_and_restart_lesson');
+    this.logger.info(
+      {
+        event: 'lesson_discarded_and_restarted',
+        ...this.createWorkflowLogContext('discard_and_restart_lesson', session),
+        discardedLessonId: previousLessonId,
+        requestedLanguage,
+        newLessonId: result.session.lessonId,
+        nextStatus: result.session.status
+      },
+      'Discarded interrupted lesson and started a new lesson'
+    );
+
+    return result;
   }
 
   private async handleConfirmWrite(session: SessionState): Promise<LessonWorkflowResult> {
@@ -496,6 +732,12 @@ export class LessonWorkflow {
 
       await this.sessionStore.clear();
       const nextSession = createEmptySessionState();
+      this.logActionCompleted('confirm_write', session, nextSession, {
+        writtenAt,
+        journalPath: journalResult.relativePath,
+        mistakesPath: mistakesResult.relativePath,
+        expressionsPath: expressionsResult.relativePath
+      });
 
       return {
         reply: createStatusReply('[Write Success]', [
@@ -512,18 +754,19 @@ export class LessonWorkflow {
         session: nextSession
       };
     } catch (error) {
-      this.logger.error(
+      this.logBusinessFailure(
+        'summary_confirm_write_failed',
         {
-          event: 'summary_confirm_write_failed',
-          lessonId: session.lessonId,
-          error
+          ...this.createWorkflowLogContext('confirm_write', session),
+          stage: 'obsidian_write'
         },
+        error,
         'Failed to confirm lesson summary write'
       );
 
       return {
         reply: createStatusReply('[Write Failed]', [
-          '写入 Obsidian 失败，当前 summary draft 已保留。',
+          '写入 Obsidian 失败，当前 summary draft 已保留，未清理 session。',
           '你可以稍后再次发送“确认写入”，或发送“重写总结”/“不写入”。'
         ]),
         session
@@ -544,11 +787,40 @@ export class LessonWorkflow {
       throw new Error('Cannot rewrite summary without lesson data');
     }
 
-    const summary = await this.agentAdapter.generateSummary({
-      language: session.language,
-      lesson,
-      answers: session.answers
-    });
+    let summary;
+
+    try {
+      summary = await this.agentAdapter.generateSummary({
+        language: session.language,
+        lesson,
+        answers: session.answers
+      });
+    } catch (error) {
+      if (error instanceof AgentTaskError) {
+        this.logBusinessFailure(
+          'summary_rewrite_failed',
+          {
+            ...this.createWorkflowLogContext('rewrite_summary', session),
+            taskName: error.taskName,
+            errorCode: error.code,
+            stage: 'summary_generation'
+          },
+          error,
+          'Failed to rewrite summary draft'
+        );
+
+        return {
+          reply: createAgentFailureReply(
+            '[Rewrite Failed]',
+            ['当前总结重写失败，已保留原 summary draft，请稍后重试。']
+          ),
+          session
+        };
+      }
+
+      throw error;
+    }
+
     const nextSession: SessionState = {
       ...session,
       draftSummary: summary,
@@ -556,6 +828,9 @@ export class LessonWorkflow {
     };
 
     await this.sessionStore.save(nextSession);
+    this.logActionCompleted('rewrite_summary', session, nextSession, {
+      answerCount: nextSession.answers.length
+    });
 
     return {
       reply: createSummaryDraftReply(nextSession),
@@ -573,6 +848,7 @@ export class LessonWorkflow {
 
     await this.sessionStore.clear();
     const nextSession = createEmptySessionState();
+    this.logActionCompleted('discard_summary', session, nextSession);
 
     return {
       reply: createStatusReply('[Summary Discarded]', [
@@ -583,13 +859,21 @@ export class LessonWorkflow {
     };
   }
 
-  private async startNewLesson(language: LanguageMode): Promise<LessonWorkflowResult> {
+  private async startNewLesson(
+    language: LanguageMode,
+    previousSession: SessionState,
+    action: Extract<RouteAction, { type: 'start_lesson' | 'discard_and_restart_lesson' }>['type']
+  ): Promise<LessonWorkflowResult> {
     this.logger.info({ event: 'lesson_start_requested', language }, 'Starting lesson generation');
 
     const lesson = await this.agentAdapter.generateLessonPlan({ language });
     const nextSession = createStartedSession(language, lesson);
 
     await this.sessionStore.save(nextSession);
+    this.logActionCompleted(action, previousSession, nextSession, {
+      topic: lesson.topic,
+      questionCount: lesson.questions.length
+    });
 
     return {
       reply: {
