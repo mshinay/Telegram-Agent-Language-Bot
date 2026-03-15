@@ -20,6 +20,7 @@ export const sessionStateSchema = z.object({
   status: lessonStatusSchema,
   lessonId: z.string().min(1).nullable(),
   language: languageModeSchema.nullable(),
+  pendingStartLanguage: languageModeSchema.nullable().default(null),
   topic: z.string().min(1).nullable(),
   material: z.string().min(1).nullable(),
   questions: z.array(questionSchema),

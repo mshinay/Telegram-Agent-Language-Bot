@@ -4,16 +4,47 @@ import { loadConfig } from './config.js';
 import { CodexAdapter } from './agent/codex-adapter.js';
 import { LocalProcessRunner } from './agent/process-runner.js';
 import { createLogger } from './logger.js';
+import type { Logger } from './logger.js';
 import { CommandRouter } from './router/command-router.js';
 import { FileObsidianStore } from './obsidian/obsidian-store.js';
 import { FileSessionStore } from './session/file-session-store.js';
 import { createBot } from './telegram/bot.js';
 import { LessonWorkflow } from './workflow/lesson-workflow.js';
+import type { SessionState } from './types/session.js';
 
 export interface App {
   bot: Bot;
   start(): Promise<void>;
   stop(): Promise<void>;
+}
+
+function shouldMarkSessionInterrupted(session: SessionState): boolean {
+  return session.status === 'in_lesson';
+}
+
+async function normalizeStartupSession(sessionStore: FileSessionStore, logger: Logger): Promise<void> {
+  const session = await sessionStore.load();
+  if (!shouldMarkSessionInterrupted(session)) {
+    return;
+  }
+
+  const nextSession: SessionState = {
+    ...session,
+    status: 'interrupted',
+    pendingStartLanguage: null,
+    updatedAt: new Date().toISOString()
+  };
+
+  await sessionStore.save(nextSession);
+  logger.info(
+    {
+      event: 'session_interrupted_on_startup',
+      lessonId: nextSession.lessonId,
+      language: nextSession.language,
+      previousStatus: session.status
+    },
+    'Marked in-progress lesson as interrupted on startup'
+  );
 }
 
 export async function createApp(): Promise<App> {
@@ -28,6 +59,7 @@ export async function createApp(): Promise<App> {
     cwd: process.cwd()
   });
   const sessionStore = new FileSessionStore(config.session.path, logger);
+  await normalizeStartupSession(sessionStore, logger);
   const obsidianStore = new FileObsidianStore({
     vaultPath: config.obsidian.vaultPath,
     logger

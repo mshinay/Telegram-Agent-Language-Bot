@@ -61,6 +61,7 @@ function createStartedSession(language: LanguageMode, lesson: LessonPlan): Sessi
     status: 'in_lesson',
     lessonId: randomUUID(),
     language,
+    pendingStartLanguage: null,
     topic: lesson.topic,
     material: lesson.material,
     questions: lesson.questions,

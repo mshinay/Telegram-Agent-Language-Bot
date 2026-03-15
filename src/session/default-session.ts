@@ -5,6 +5,7 @@ export function createEmptySessionState(): SessionState {
     status: 'idle',
     lessonId: null,
     language: null,
+    pendingStartLanguage: null,
     topic: null,
     material: null,
     questions: [],

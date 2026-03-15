@@ -24,6 +24,7 @@ export interface SessionState {
   status: LessonStatus;
   lessonId: string | null;
   language: LanguageMode | null;
+  pendingStartLanguage: LanguageMode | null;
   topic: string | null;
   material: string | null;
   questions: Question[];
