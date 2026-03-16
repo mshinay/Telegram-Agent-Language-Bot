@@ -15,8 +15,9 @@ function getQuestionSpecificRules(questionType: Question['type'], language: Lang
   if (questionType === 'translate') {
     return [
       'Question-type evaluation rules for translate:',
+      `Judge how well the learner translates the Simplified Chinese prompt into natural ${targetLanguage}.`,
       `Judge meaning accuracy first, then grammar, word choice, and naturalness in ${targetLanguage}.`,
-      'A good answer should accurately convey the source meaning without important omissions, additions, or distortions.',
+      'A good answer should accurately convey the Simplified Chinese source meaning without important omissions, additions, or distortions.',
       'If the meaning is wrong, incomplete, or reversed, mark that clearly even if parts of the language are fluent.',
       'If the meaning is correct but the wording is awkward, say that it is correct but unnatural.'
     ].join('\n');
