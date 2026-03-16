@@ -13,7 +13,15 @@ function getLanguageLabel(language: LanguageMode): string {
 }
 
 function getQuestionTypeLabel(type: LessonQuestionReview['question']['type']): string {
-  return type === 'translate' ? 'Translate' : 'Retell';
+  if (type === 'translate') {
+    return 'Translate';
+  }
+
+  if (type === 'paraphrase') {
+    return 'Paraphrase';
+  }
+
+  return 'Free Expression';
 }
 
 function formatMarkdownList(items: string[]): string {

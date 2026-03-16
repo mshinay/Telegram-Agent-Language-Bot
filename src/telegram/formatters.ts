@@ -51,7 +51,11 @@ function formatQuestionPrompt(question: Question): string {
     return ['请完成翻译题：', question.prompt].join('\n');
   }
 
-  return ['请完成复述题：', question.prompt].join('\n');
+  if (question.type === 'paraphrase') {
+    return ['请完成改写题：', question.prompt].join('\n');
+  }
+
+  return ['请完成自由表达题：', question.prompt].join('\n');
 }
 
 function formatList(items: string[]): string {
