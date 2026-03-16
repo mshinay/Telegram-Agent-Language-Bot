@@ -1,6 +1,6 @@
 export type LanguageMode = 'ja' | 'en';
 
-export type QuestionType = 'translate' | 'retell';
+export type QuestionType = 'translate' | 'paraphrase' | 'free_expression';
 
 export const LESSON_MATERIAL_COUNT = 1;
 export const LESSON_QUESTION_COUNT = 3;
