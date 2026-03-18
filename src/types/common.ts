@@ -29,6 +29,7 @@ export interface ObsidianConfig {
   englishDir: string;
   mistakesDir: string;
   expressionsDir: string;
+  learnerProfilePath: string;
 }
 
 export interface LoggingConfig {

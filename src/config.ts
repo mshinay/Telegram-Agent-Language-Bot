@@ -32,7 +32,18 @@ export async function loadConfig(): Promise<AppConfig> {
     fileConfig = await fs.readJson(configPath);
   }
 
-  const mergedConfig = {
+  const obsidianConfig: AppConfig['obsidian'] = {
+    vaultPath: process.env.OBSIDIAN_VAULT_PATH ?? fileConfig.obsidian?.vaultPath ?? '',
+    languageRoot: process.env.OBSIDIAN_LANGUAGE_ROOT ?? fileConfig.obsidian?.languageRoot ?? 'Language',
+    journalDir: process.env.OBSIDIAN_JOURNAL_DIR ?? fileConfig.obsidian?.journalDir ?? 'Journal',
+    japaneseDir: process.env.OBSIDIAN_JAPANESE_DIR ?? fileConfig.obsidian?.japaneseDir ?? 'Japanese',
+    englishDir: process.env.OBSIDIAN_ENGLISH_DIR ?? fileConfig.obsidian?.englishDir ?? 'English',
+    mistakesDir: process.env.OBSIDIAN_MISTAKES_DIR ?? fileConfig.obsidian?.mistakesDir ?? 'Mistakes',
+    expressionsDir: process.env.OBSIDIAN_EXPRESSIONS_DIR ?? fileConfig.obsidian?.expressionsDir ?? 'Expressions',
+    learnerProfilePath: process.env.OBSIDIAN_LEARNER_PROFILE_PATH ?? fileConfig.obsidian?.learnerProfilePath ?? ''
+  };
+
+  const mergedConfig: unknown = {
     telegram: {
       botToken: process.env.TELEGRAM_BOT_TOKEN ?? fileConfig.telegram?.botToken ?? '',
       allowedChatId: process.env.TELEGRAM_ALLOWED_CHAT_ID ?? fileConfig.telegram?.allowedChatId,
@@ -47,15 +58,7 @@ export async function loadConfig(): Promise<AppConfig> {
       command: fileConfig.agent?.command ?? getDefaultAgentCommand(),
       timeoutSec: Number(process.env.AGENT_TIMEOUT_SEC ?? fileConfig.agent?.timeoutSec ?? 180)
     },
-    obsidian: {
-      vaultPath: process.env.OBSIDIAN_VAULT_PATH ?? fileConfig.obsidian?.vaultPath ?? '',
-      languageRoot: process.env.OBSIDIAN_LANGUAGE_ROOT ?? fileConfig.obsidian?.languageRoot ?? 'Language',
-      journalDir: process.env.OBSIDIAN_JOURNAL_DIR ?? fileConfig.obsidian?.journalDir ?? 'Journal',
-      japaneseDir: process.env.OBSIDIAN_JAPANESE_DIR ?? fileConfig.obsidian?.japaneseDir ?? 'Japanese',
-      englishDir: process.env.OBSIDIAN_ENGLISH_DIR ?? fileConfig.obsidian?.englishDir ?? 'English',
-      mistakesDir: process.env.OBSIDIAN_MISTAKES_DIR ?? fileConfig.obsidian?.mistakesDir ?? 'Mistakes',
-      expressionsDir: process.env.OBSIDIAN_EXPRESSIONS_DIR ?? fileConfig.obsidian?.expressionsDir ?? 'Expressions'
-    },
+    obsidian: obsidianConfig,
     logging: {
       level: process.env.LOG_LEVEL ?? fileConfig.logging?.level ?? 'info'
     }

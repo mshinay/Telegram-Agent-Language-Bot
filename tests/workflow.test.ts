@@ -5,6 +5,7 @@ import { createLogger } from '../dist/logger.js';
 import { LessonWorkflow } from '../dist/workflow/lesson-workflow.js';
 import { createEmptySessionState } from '../dist/session/default-session.js';
 import { AgentTaskError } from '../dist/types/agent.js';
+import { ObsidianStoreError } from '../dist/types/obsidian.js';
 import type { AgentAdapter } from '../dist/agent/agent-adapter.js';
 import type { ObsidianConfig } from '../dist/types/common.js';
 import type { AnswerFeedback, LessonPlan, LessonSummary } from '../dist/types/lesson.js';
@@ -12,6 +13,7 @@ import type { ObsidianReadRequest, ObsidianReadResult, ObsidianStore, ObsidianWr
 import type { SessionState, SessionStore } from '../dist/types/session.js';
 
 const logger = createLogger('silent');
+const expectedProfilePath = 'Language/Profile/Language Profile.md';
 
 const lessonPlan: LessonPlan = {
   topic: 'Travel',
@@ -46,7 +48,8 @@ const obsidianConfig: ObsidianConfig = {
   japaneseDir: 'Japanese',
   englishDir: 'English',
   mistakesDir: 'Mistakes.md',
-  expressionsDir: 'Expressions.md'
+  expressionsDir: 'Expressions.md',
+  learnerProfilePath: ''
 };
 
 class MemorySessionStore implements SessionStore {
@@ -75,8 +78,13 @@ class MemorySessionStore implements SessionStore {
 
 class MemoryObsidianStore implements ObsidianStore {
   public readonly writes: ObsidianWriteRequest[] = [];
+  public profileContent: string | null = null;
+  public lastReadRelativePath: string | null = null;
 
-  public constructor(private readonly failOnWrite = false) {}
+  public constructor(
+    private readonly failOnWrite = false,
+    private readonly failOnRead = false
+  ) {}
 
   public resolvePath(relativePath: string): string {
     return `vault/${relativePath}`;
@@ -87,11 +95,21 @@ class MemoryObsidianStore implements ObsidianStore {
   }
 
   public async read(request: ObsidianReadRequest): Promise<ObsidianReadResult> {
+    this.lastReadRelativePath = request.relativePath;
+
+    if (this.failOnRead) {
+      throw new ObsidianStoreError('read failed', {
+        code: 'READ_FAILED',
+        relativePath: request.relativePath,
+        vaultPath: 'vault'
+      });
+    }
+
     return {
       relativePath: request.relativePath,
       absolutePath: this.resolvePath(request.relativePath),
-      exists: false,
-      content: null
+      exists: this.profileContent !== null,
+      content: this.profileContent
     };
   }
 
@@ -248,6 +266,64 @@ test('workflow discards interrupted lesson and starts a new lesson', async () =>
   assert.equal(sessionStore.saves.length, 1);
 });
 
+test('workflow passes learner profile content into lesson generation when available', async () => {
+  let receivedContext: string | null | undefined;
+  const obsidianStore = new MemoryObsidianStore();
+  obsidianStore.profileContent = '# Learner Profile\nFocus on travel speaking.';
+  const agentAdapter = createAgentAdapter({
+    async generateLessonPlan(input) {
+      receivedContext = input.context;
+      return lessonPlan;
+    }
+  });
+  const initialSession = createEmptySessionState();
+  const { workflow } = createWorkflow({ session: initialSession, agentAdapter, obsidianStore });
+
+  const result = await workflow.handle({ type: 'start_lesson', language: 'ja' }, initialSession);
+
+  assert.equal(result.reply.type, 'lesson_start');
+  assert.equal(receivedContext, '# Learner Profile\nFocus on travel speaking.');
+  assert.equal(obsidianStore.lastReadRelativePath, expectedProfilePath);
+});
+
+test('workflow starts lesson without context when learner profile is unavailable', async () => {
+  let receivedContext: string | null | undefined = 'unset';
+  const obsidianStore = new MemoryObsidianStore();
+  const agentAdapter = createAgentAdapter({
+    async generateLessonPlan(input) {
+      receivedContext = input.context;
+      return lessonPlan;
+    }
+  });
+  const initialSession = createEmptySessionState();
+  const { workflow } = createWorkflow({ session: initialSession, agentAdapter, obsidianStore });
+
+  const result = await workflow.handle({ type: 'start_lesson', language: 'ja' }, initialSession);
+
+  assert.equal(result.reply.type, 'lesson_start');
+  assert.equal(receivedContext, undefined);
+  assert.equal(obsidianStore.lastReadRelativePath, expectedProfilePath);
+});
+
+test('workflow starts lesson when learner profile read fails', async () => {
+  let receivedContext: string | null | undefined = 'unset';
+  const obsidianStore = new MemoryObsidianStore(false, true);
+  const agentAdapter = createAgentAdapter({
+    async generateLessonPlan(input) {
+      receivedContext = input.context;
+      return lessonPlan;
+    }
+  });
+  const initialSession = createEmptySessionState();
+  const { workflow } = createWorkflow({ session: initialSession, agentAdapter, obsidianStore });
+
+  const result = await workflow.handle({ type: 'start_lesson', language: 'ja' }, initialSession);
+
+  assert.equal(result.reply.type, 'lesson_start');
+  assert.equal(receivedContext, undefined);
+  assert.equal(obsidianStore.lastReadRelativePath, expectedProfilePath);
+});
+
 test('workflow keeps in_lesson state when finish summary generation fails', async () => {
   const initialSession = createInLessonSession();
   const failingAgent = createAgentAdapter({
@@ -306,7 +382,6 @@ test('workflow keeps awaiting_summary_confirmation when confirm write fails', as
   assert.equal(sessionStore.saves.length, 0);
 });
 
-
 test('workflow returns feedback and summary together after final answer', async () => {
   const initialSession: SessionState = {
     ...createInLessonSession(),
@@ -355,3 +430,4 @@ test('workflow returns feedback only for non-final answer submissions', async ()
   assert.equal(result.session.answers.length, 2);
   assert.equal(sessionStore.saves.length, 1);
 });
+

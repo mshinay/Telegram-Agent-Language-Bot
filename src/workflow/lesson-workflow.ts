@@ -13,6 +13,7 @@ import { createEmptySessionState } from '../session/default-session.js';
 import { writeJournalEntry } from '../obsidian/journal.js';
 import { writeMistakesEntry } from '../obsidian/mistakes.js';
 import { writeExpressionsEntry } from '../obsidian/expressions.js';
+import { readLearnerProfileNote } from '../obsidian/profile.js';
 
 export interface LessonWorkflowDeps {
   agentAdapter: AgentAdapter;
@@ -873,13 +874,38 @@ export class LessonWorkflow {
   ): Promise<LessonWorkflowResult> {
     this.logger.info({ event: 'lesson_start_requested', language }, 'Starting lesson generation');
 
-    const lesson = await this.agentAdapter.generateLessonPlan({ language });
+    let lessonContext: string | null = null;
+
+    try {
+      const profile = await readLearnerProfileNote(this.obsidianStore, this.obsidianConfig, this.logger);
+      lessonContext = profile.content;
+    } catch (error) {
+      this.logger.warn(
+        {
+          event: 'learner_profile_read_nonfatal',
+          action,
+          status: previousSession.status,
+          lessonId: previousSession.lessonId,
+          language,
+          relativePath: this.obsidianConfig.learnerProfilePath,
+          ...(this.currentHandleContext?.chatId !== undefined ? { chatId: this.currentHandleContext.chatId } : {}),
+          error
+        },
+        'Continuing lesson generation without learner profile context'
+      );
+    }
+
+    const lesson = await this.agentAdapter.generateLessonPlan({
+      language,
+      ...(lessonContext ? { context: lessonContext } : {})
+    });
     const nextSession = createStartedSession(language, lesson);
 
     await this.sessionStore.save(nextSession);
     this.logActionCompleted(action, previousSession, nextSession, {
       topic: lesson.topic,
-      questionCount: lesson.questions.length
+      questionCount: lesson.questions.length,
+      usedLessonContext: lessonContext !== null
     });
 
     return {
