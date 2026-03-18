@@ -12,5 +12,13 @@ export type AppReply =
       feedback: AnswerFeedback;
       nextQuestion?: Question | null;
     }
+  | {
+      type: 'answer_feedback_with_summary';
+      language: LanguageMode;
+      currentQuestionIndex: number;
+      totalQuestions: number;
+      feedback: AnswerFeedback;
+      summary: LessonSummary;
+    }
   | { type: 'summary_draft'; language: LanguageMode; summary: LessonSummary }
   | { type: 'status'; title: string; lines: string[] };

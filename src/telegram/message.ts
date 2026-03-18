@@ -19,6 +19,8 @@ export function renderWorkflowReply(reply: AppReply): string {
       return formatCurrentQuestionMessage(reply);
     case 'answer_feedback':
       return formatAnswerFeedbackMessage(reply);
+    case 'answer_feedback_with_summary':
+      return [formatAnswerFeedbackMessage(reply), formatSummaryDraftMessage(reply)].join('\n\n');
     case 'summary_draft':
       return formatSummaryDraftMessage(reply);
     case 'status':

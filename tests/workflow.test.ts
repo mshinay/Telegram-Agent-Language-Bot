@@ -306,3 +306,52 @@ test('workflow keeps awaiting_summary_confirmation when confirm write fails', as
   assert.equal(sessionStore.saves.length, 0);
 });
 
+
+test('workflow returns feedback and summary together after final answer', async () => {
+  const initialSession: SessionState = {
+    ...createInLessonSession(),
+    currentQuestionIndex: 2,
+    answers: [
+      {
+        questionId: 1,
+        answer: 'Answer 1',
+        feedback: answerFeedback,
+        answeredAt: '2026-03-15T10:00:00.000Z'
+      },
+      {
+        questionId: 2,
+        answer: 'Answer 2',
+        feedback: answerFeedback,
+        answeredAt: '2026-03-15T10:05:00.000Z'
+      }
+    ]
+  };
+  const { workflow, sessionStore } = createWorkflow({ session: initialSession });
+
+  const result = await workflow.handle({ type: 'submit_answer', text: 'Answer 3' }, initialSession);
+
+  assert.equal(result.reply.type, 'answer_feedback_with_summary');
+  assert.equal(result.reply.currentQuestionIndex, 2);
+  assert.deepEqual(result.reply.feedback, answerFeedback);
+  assert.deepEqual(result.reply.summary, summaryDraft);
+  assert.equal(result.session.status, 'awaiting_summary_confirmation');
+  assert.equal(result.session.currentQuestionIndex, 3);
+  assert.deepEqual(result.session.draftSummary, summaryDraft);
+  assert.equal(result.session.answers.length, 3);
+  assert.equal(sessionStore.saves.length, 1);
+});
+
+test('workflow returns feedback only for non-final answer submissions', async () => {
+  const initialSession = createInLessonSession();
+  const { workflow, sessionStore } = createWorkflow({ session: initialSession });
+
+  const result = await workflow.handle({ type: 'submit_answer', text: 'Answer 2 revised' }, initialSession);
+
+  assert.equal(result.reply.type, 'answer_feedback');
+  assert.equal(result.reply.currentQuestionIndex, 1);
+  assert.equal(result.session.status, 'in_lesson');
+  assert.equal(result.session.currentQuestionIndex, 2);
+  assert.equal(result.session.draftSummary, null);
+  assert.equal(result.session.answers.length, 2);
+  assert.equal(sessionStore.saves.length, 1);
+});

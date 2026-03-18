@@ -574,7 +574,14 @@ export class LessonWorkflow {
       });
 
       return {
-        reply: createSummaryDraftReply(nextSession),
+        reply: {
+          type: 'answer_feedback_with_summary',
+          language: session.language,
+          currentQuestionIndex: answeredQuestionIndex,
+          totalQuestions: session.questions.length,
+          feedback,
+          summary
+        },
         session: nextSession
       };
     }
