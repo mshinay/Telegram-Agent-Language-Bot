@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import type { ExpressionRecord } from '../types/lesson.js';
+import type { ExpressionUnit } from '../types/lesson.js';
 import type {
   ExpressionsPathConfig,
   ExpressionsWriteRequest,
@@ -26,44 +26,34 @@ export function buildExpressionsNotePath(
   );
 }
 
-function buildExpressionKey(record: ExpressionRecord): string {
-  return `${record.source}:${record.questionId ?? 'summary'}:${record.text}`;
+function buildExpressionKey(record: ExpressionUnit): string {
+  return [record.expression, record.example, record.meaning, record.usage, record.scene].join(':');
 }
 
-function normalizeExpressionRecord(record: ExpressionRecord): ExpressionRecord | null {
-  const text = normalizeMarkdownLine(record.text);
-  if (!text) {
+function normalizeExpressionUnit(record: ExpressionUnit): ExpressionUnit | null {
+  const expression = normalizeMarkdownLine(record.expression);
+  const example = normalizeMarkdownLine(record.example);
+  const meaning = normalizeMarkdownLine(record.meaning);
+  const usage = normalizeMarkdownLine(record.usage);
+  const scene = normalizeMarkdownLine(record.scene);
+
+  if (!expression || !example || !meaning || !usage || !scene) {
     return null;
   }
 
   return {
-    text,
-    source: record.source,
-    questionId: record.questionId
+    expression,
+    example,
+    meaning,
+    usage,
+    scene
   };
 }
 
-export function collectExpressionRecords(input: Pick<ExpressionsWriteRequest, 'lesson'>): ExpressionRecord[] {
-  const summaryExpressions = input.lesson.summary.naturalExpressions.map((text) => ({
-    text,
-    source: 'summary' as const,
-    questionId: null
-  }));
-  const naturalVersions = input.lesson.reviewItems.map((item) => ({
-    text: item.feedback.naturalVersion,
-    source: 'natural_version' as const,
-    questionId: item.question.id
-  }));
-  const alternatives = input.lesson.reviewItems.flatMap((item) =>
-    item.feedback.alternatives.map((text) => ({
-      text,
-      source: 'alternative' as const,
-      questionId: item.question.id
-    }))
-  );
-  const normalized = [...summaryExpressions, ...naturalVersions, ...alternatives]
-    .map(normalizeExpressionRecord)
-    .filter((record): record is ExpressionRecord => record !== null);
+export function collectExpressionRecords(input: Pick<ExpressionsWriteRequest, 'lesson'>): ExpressionUnit[] {
+  const normalized = input.lesson.summary.expressionUnits
+    .map(normalizeExpressionUnit)
+    .filter((record): record is ExpressionUnit => record !== null);
   const seen = new Set<string>();
 
   return normalized.filter((record) => {
@@ -77,21 +67,20 @@ export function collectExpressionRecords(input: Pick<ExpressionsWriteRequest, 'l
   });
 }
 
-function renderExpressionMetadata(record: ExpressionRecord): string {
-  if (record.source === 'summary') {
-    return 'summary';
-  }
-
-  if (record.source === 'natural_version') {
-    return `q${record.questionId ?? '?'} natural`;
-  }
-
-  return `q${record.questionId ?? '?'} alt`;
+function renderExpressionUnit(entry: ExpressionUnit, index: number): string {
+  return [
+    `#### Expression ${index + 1}`,
+    `- Expression: ${entry.expression}`,
+    `- Example: ${entry.example}`,
+    `- Meaning: ${entry.meaning}`,
+    `- Usage: ${entry.usage}`,
+    `- Scene: ${entry.scene}`
+  ].join('\n');
 }
 
 export function renderExpressionsMarkdown(input: Pick<ExpressionsWriteRequest, 'lesson' | 'writtenAt'>): {
   content: string;
-  entries: ExpressionRecord[];
+  entries: ExpressionUnit[];
 } {
   const entries = collectExpressionRecords(input);
   if (entries.length === 0) {
@@ -110,7 +99,7 @@ export function renderExpressionsMarkdown(input: Pick<ExpressionsWriteRequest, '
     `- Topic: ${input.lesson.topic}`,
     '',
     '### Expressions',
-    entries.map((entry) => `- [${renderExpressionMetadata(entry)}] ${entry.text}`).join('\n')
+    entries.map(renderExpressionUnit).join('\n\n')
   ];
 
   return {

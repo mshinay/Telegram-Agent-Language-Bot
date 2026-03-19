@@ -37,6 +37,24 @@ const summaryDraft: LessonSummary = {
   strengths: ['Clear meaning'],
   mistakes: ['Article usage'],
   naturalExpressions: ['How have you been?'],
+  mistakeUnits: [
+    {
+      pattern: 'article',
+      wrong: 'I go to station.',
+      correct: 'I go to the station.',
+      explanation: '冠词缺失。',
+      tag: 'grammar'
+    }
+  ],
+  expressionUnits: [
+    {
+      expression: 'How have you been?',
+      example: 'How have you been lately?',
+      meaning: '最近怎么样',
+      usage: '用于关心近况的寒暄',
+      scene: 'greeting'
+    }
+  ],
   reviewPoints: ['Review articles'],
   overallComment: 'Keep practicing.'
 };

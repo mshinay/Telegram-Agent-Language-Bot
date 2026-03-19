@@ -50,11 +50,29 @@ export const answerFeedbackSchema = z.object({
   alternatives: z.array(z.string())
 });
 
+export const mistakeUnitSchema = z.object({
+  pattern: z.string().min(1),
+  wrong: z.string().min(1),
+  correct: z.string().min(1),
+  explanation: z.string().min(1),
+  tag: z.string().min(1)
+});
+
+export const expressionUnitSchema = z.object({
+  expression: z.string().min(1),
+  example: z.string().min(1),
+  meaning: z.string().min(1),
+  usage: z.string().min(1),
+  scene: z.string().min(1)
+});
+
 export const lessonSummarySchema = z.object({
   topic: z.string().min(1),
   strengths: z.array(z.string()),
   mistakes: z.array(z.string()),
   naturalExpressions: z.array(z.string()),
+  mistakeUnits: z.array(mistakeUnitSchema),
+  expressionUnits: z.array(expressionUnitSchema),
   reviewPoints: z.array(z.string()),
   overallComment: z.string().min(1)
 });

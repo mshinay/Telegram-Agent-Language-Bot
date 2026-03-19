@@ -24,22 +24,26 @@ export interface AnswerFeedback {
   alternatives: string[];
 }
 
+export interface MistakeUnit {
+  pattern: string;
+  wrong: string;
+  correct: string;
+  explanation: string;
+  tag: string;
+}
+
+export interface ExpressionUnit {
+  expression: string;
+  example: string;
+  meaning: string;
+  usage: string;
+  scene: string;
+}
+
 export interface LessonQuestionReview {
   question: Question;
   answer: string;
   feedback: AnswerFeedback;
-}
-
-export interface MistakeRecord {
-  text: string;
-  source: 'summary' | 'feedback';
-  questionId: number | null;
-}
-
-export interface ExpressionRecord {
-  text: string;
-  source: 'summary' | 'natural_version' | 'alternative';
-  questionId: number | null;
 }
 
 export interface LessonSummary {
@@ -47,6 +51,8 @@ export interface LessonSummary {
   strengths: string[];
   mistakes: string[];
   naturalExpressions: string[];
+  mistakeUnits: MistakeUnit[];
+  expressionUnits: ExpressionUnit[];
   reviewPoints: string[];
   overallComment: string;
 }

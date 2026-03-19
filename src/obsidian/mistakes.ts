@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import type { MistakeRecord } from '../types/lesson.js';
+import type { MistakeUnit } from '../types/lesson.js';
 import type {
   MistakesPathConfig,
   MistakesWriteRequest,
@@ -26,39 +26,34 @@ export function buildMistakesNotePath(
   );
 }
 
-function buildMistakeKey(record: MistakeRecord): string {
-  return `${record.source}:${record.questionId ?? 'summary'}:${record.text}`;
+function buildMistakeKey(record: MistakeUnit): string {
+  return [record.pattern, record.wrong, record.correct, record.explanation, record.tag].join(':');
 }
 
-function normalizeMistakeRecord(record: MistakeRecord): MistakeRecord | null {
-  const text = normalizeMarkdownLine(record.text);
-  if (!text) {
+function normalizeMistakeUnit(record: MistakeUnit): MistakeUnit | null {
+  const pattern = normalizeMarkdownLine(record.pattern);
+  const wrong = normalizeMarkdownLine(record.wrong);
+  const correct = normalizeMarkdownLine(record.correct);
+  const explanation = normalizeMarkdownLine(record.explanation);
+  const tag = normalizeMarkdownLine(record.tag);
+
+  if (!pattern || !wrong || !correct || !explanation || !tag) {
     return null;
   }
 
   return {
-    text,
-    source: record.source,
-    questionId: record.questionId
+    pattern,
+    wrong,
+    correct,
+    explanation,
+    tag
   };
 }
 
-export function collectMistakeRecords(input: Pick<MistakesWriteRequest, 'lesson'>): MistakeRecord[] {
-  const summaryMistakes = input.lesson.summary.mistakes.map((text) => ({
-    text,
-    source: 'summary' as const,
-    questionId: null
-  }));
-  const feedbackMistakes = input.lesson.reviewItems.flatMap((item) =>
-    item.feedback.issues.map((text) => ({
-      text,
-      source: 'feedback' as const,
-      questionId: item.question.id
-    }))
-  );
-  const normalized = [...summaryMistakes, ...feedbackMistakes]
-    .map(normalizeMistakeRecord)
-    .filter((record): record is MistakeRecord => record !== null);
+export function collectMistakeRecords(input: Pick<MistakesWriteRequest, 'lesson'>): MistakeUnit[] {
+  const normalized = input.lesson.summary.mistakeUnits
+    .map(normalizeMistakeUnit)
+    .filter((record): record is MistakeUnit => record !== null);
   const seen = new Set<string>();
 
   return normalized.filter((record) => {
@@ -72,17 +67,20 @@ export function collectMistakeRecords(input: Pick<MistakesWriteRequest, 'lesson'
   });
 }
 
-function renderMistakeMetadata(record: MistakeRecord): string {
-  if (record.source === 'summary') {
-    return 'summary';
-  }
-
-  return `q${record.questionId ?? '?'}`;
+function renderMistakeUnit(entry: MistakeUnit, index: number): string {
+  return [
+    `#### Mistake ${index + 1}`,
+    `- Pattern: ${entry.pattern}`,
+    `- Wrong: ${entry.wrong}`,
+    `- Correct: ${entry.correct}`,
+    `- Explanation: ${entry.explanation}`,
+    `- Tag: ${entry.tag}`
+  ].join('\n');
 }
 
 export function renderMistakesMarkdown(input: Pick<MistakesWriteRequest, 'lesson' | 'writtenAt'>): {
   content: string;
-  entries: MistakeRecord[];
+  entries: MistakeUnit[];
 } {
   const entries = collectMistakeRecords(input);
   if (entries.length === 0) {
@@ -101,7 +99,7 @@ export function renderMistakesMarkdown(input: Pick<MistakesWriteRequest, 'lesson
     `- Topic: ${input.lesson.topic}`,
     '',
     '### Mistakes',
-    entries.map((entry) => `- [${renderMistakeMetadata(entry)}] ${entry.text}`).join('\n')
+    entries.map(renderMistakeUnit).join('\n\n')
   ];
 
   return {
