@@ -38,6 +38,17 @@ Telegram → Router → Workflow → Agent → Obsidian
 
 ## 3. 功能特性
 
+### 技术栈
+  
+     - Node.js 20+
+     - TypeScript
+     - grammy
+     - Zod
+     - pino
+     - 本地 Codex CLI
+     - Obsidian Markdown Vault
+
+
 ### Telegram 交互
 
 * 基于 long polling 接收消息
